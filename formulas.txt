@@ -1,0 +1,72 @@
+[syntax]
+sum(a: expr, b: expr) -> expr <-> a + b;
+sub(a: expr, b: expr) -> expr <-> a - b;
+mul(a: expr, b: expr) -> expr <-> a * b;
+div(a: expr, b: expr) -> expr <-> a / b;
+pow(a: expr, b: expr) -> expr <-> a ^ b;
+
+eq(a: expr, b: expr) -> cond <-> a = b;
+neq(a: expr, b: expr) -> cond <-> a != b;
+lt(a: expr, b: expr) -> cond <-> a < b;
+gt(a: expr, b: expr) -> cond <-> a > b;
+le(a: expr, b: expr) -> cond <-> a <= b;
+ge(a: expr, b: expr) -> cond <-> a >= b;
+
+ifval(val: expr, if: cond) -> expr <-> {val: if};
+
+and(a: cond, b: cond) -> cond <-> a & b;
+or(a: cond, b: cond) -> cond <-> a | b;
+not(a: cond) -> cond <-> not(a);
+
+
+[sum]
+(a+b)+c <-> a+(b+c);
+a+b <-> b+a;
+a+0 <-> a;
+
+
+[sub]
+a+(-b) <-> a-b;
+a-a <-> 0;
+
+
+[mul]
+(a*b)*c <-> a*(b*c);
+a*b <-> b*a;
+a*1 <-> a;
+
+
+[div]
+a*(1/b) <-> a/b;
+a/a <-> {1: a != 0};
+
+
+[logic]
+a = a <-> true;
+a <= a <-> true;
+a >= a <-> true;
+a != a <-> false;
+a < a <-> false;
+a > a <-> false;
+true & a <-> a;
+true | a <-> true;
+not(true) <-> false;
+not(not(a)) <-> a;
+
+
+[ifval]
+a+{b: c} <-> {a+b: c};
+a-{b: c} <-> {a+b: c};
+a*{b: c} <-> {a+b: c};
+a/{b: c} <-> {a+b: c};
+a^{b: c} <-> {a+b: c};
+
+{a: c_1}+{b: c_2} <-> {a+b: c_1 & c_2};
+{a: c_1}-{b: c_2} <-> {a-b: c_1 & c_2};
+{a: c_1}*{b: c_2} <-> {a*b: c_1 & c_2};
+{a: c_1}/{b: c_2} <-> {a/b: c_1 & c_2};
+{a: c_1}^{b: c_2} <-> {a^b: c_1 & c_2};
+
+
+[sum-mul]
+(a+b)*c <-> a*c + b*c;
