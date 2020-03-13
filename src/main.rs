@@ -87,6 +87,154 @@ fn apply(formula: &Tree, bindings: &[Binding]) -> Option<Tree> {
     }
 }
 
+fn count_functions(formula: &Tree) -> usize {
+    match formula {
+        Tree::Function { args, .. } => args.iter().map(|x| count_functions(x)).sum::<usize>() + 1,
+        Tree::Variable { .. } => 1,
+    }
+}
+
+enum TreeIteratorState {
+    Start,
+    Left,
+    Right,
+    Up,
+    Return,
+    End,
+}
+
+impl Tree {
+    fn is_leaf(&self) -> bool {
+        match self {
+            Tree::Variable { .. } => true,
+            Tree::Function { args, .. } => args.is_empty(),
+        }
+    }
+
+    fn iter(&self) -> TreeIterator {
+        /*TreeIterator {
+            stack: vec![(0, self)],
+            state: TreeIteratorState::Start,
+        }*/
+        let mut stack = Vec::with_capacity(100);
+        stack.push(self);
+        TreeIterator { stack }
+    }
+}
+
+struct TreeIterator<'a> {
+    /*stack: Vec<(usize, &'a Tree)>,
+    state: TreeIteratorState,*/
+    stack: Vec<&'a Tree>,
+}
+
+/*impl TreeIterator<'_> {
+    fn current(&self) -> Option<&Tree> {
+        Some(self.stack.last()?.1)
+    }
+
+    fn has_right(&self) -> bool {
+        if let Some((pos, current)) = self.stack.last() {
+            if let Tree::Function { args, .. } = current {
+                pos < &args.len()
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    }
+
+    fn move_left(&mut self) -> Option<()> {
+        if let Tree::Function { args, .. } = self.stack.last()?.1 {
+            self.stack.push((0, &args[0]));
+        } else {
+            return None;
+        }
+        Some(())
+    }
+
+    fn move_right(&mut self) -> Option<()> {
+        self.stack.last_mut()?.0 += 1;
+
+        if self.has_right() {
+            if let Tree::Function { args, .. } = self.stack.last()?.1 {
+                self.stack.push((0, &args[self.stack.last()?.0]));
+            } else {
+                return None;
+            }
+        } else {
+            return None;
+        }
+        Some(())
+    }
+}*/
+
+impl<'a> Iterator for TreeIterator<'a> {
+    type Item = &'a Tree;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let item: Self::Item = self.stack.pop()?;
+        if let Tree::Function { args, .. } = item {
+            for entry in args.iter().rev() {
+                self.stack.push(&*entry);
+            }
+        }
+        Some(item)
+        /*use TreeIteratorState::*;
+        loop {
+            match self.state {
+                Start => {
+                    if self.current()?.is_leaf() {
+                        self.state = Return;
+                    } else {
+                        self.state = Left;
+                    }
+                },
+                Left => {
+                    self.move_left()?;
+
+                    if self.current()?.is_leaf() {
+                        self.state = Return;
+                    } else {
+                        self.state = Left;
+                    }
+                },
+                Right => {
+                    self.move_right()?;
+
+                    if self.current()?.is_leaf() {
+                        self.state = Return;
+                    } else {
+                        self.state = Left;
+                    }
+                },
+                Up => {
+                    self.stack.pop()?;
+
+                    if self.stack.is_empty() {
+                        self.state = End;
+                    } else if self.has_right() {
+                        self.state = Right;
+                    } else {
+                        self.state = Return;
+                    }
+
+                    return Some(self.stack.last()?.1);
+                },
+                Return => {
+                    self.state = Up;
+                    return Some(self.stack.last()?.1);
+                },
+                End => {
+                    return None;
+                },
+            }
+        }*/
+    }
+}
+
+
 use std::fmt;
 
 struct PrintingBrackets<'a, T: 'a> {
@@ -161,8 +309,20 @@ fn main() {
     let bindings = find_variables(&formula.from, &expr).expect("cant find formula pattern");
     let new_expr = apply(&formula.to, &bindings).expect("cant apply formula");
 
-    println!("Formula: {}\n", formula);
+    println!("\nFormula: {}\n", formula);
     println!("Expression: {}\n", expr);
     println!("Bindings:\n{}\n", Bindings { bindings });
-    println!("Expression with applied formula: {}", new_expr);
+    println!("Expression with applied formula: {}\n", new_expr);
+
+    println!("Count functions: {}", count_functions(&expr));
+
+    for (index, i) in expr.iter().enumerate() {
+        if let Some(bindings) = find_variables(&formula.from, i) {
+            if let Some(new_expr) = apply(&formula.to, &bindings) {
+                println!("{}, {} ------> {}", index, i, new_expr);
+                continue;
+            }
+        }
+        println!("{}, {}", index, i);
+    }
 }
