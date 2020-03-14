@@ -1,35 +1,56 @@
 use itertools::Itertools;
 
 peg::parser!( grammar arithmetic() for str {
+    pub rule formulas() -> Vec<Transformation>
+        = r:(t:transformation() _ ";" _ {t})+ {
+            r
+        }
+
     pub rule transformation() -> Transformation
-        = a:expr() _ "<->" _ b:expr() {
-            Transformation { from: a, to: b }
+        = l:expr() _ "<->" _ r:expr() {
+            Transformation { from: l, to: r }
         }
 
     pub rule expr() -> Tree
         = sum()
 
     rule sum() -> Tree
-        = l:product() _ "+" _ r:sum() { 
-            Tree::Function { name: "+".to_string(), args: vec![l, r] } 
+        = l:product() r:(_ z:$("+"/"-") _ p:product() { (z, p) })* {
+            r.into_iter().fold(l, |acc, (z, p)| Tree::function(z.to_string(), vec![acc, p]))
         }
-        / product()
 
     rule product() -> Tree
-        = l:atom() _ "*" _ r:product() {
-            Tree::Function { name: "*".to_string(), args: vec![l, r] } 
+        = l:power() r:(_ z:$("*"/"/") _ p:power() { (z, p) })* {
+            r.into_iter().fold(l, |acc, (z, p)| Tree::function(z.to_string(), vec![acc, p]))
         }
-        / atom()
+
+    rule power() -> Tree
+        = l:atom() _ r:("^" p:power() { p })? {
+            match r {
+                Some(r) => Tree::function("^".to_string(), vec![l, r]),
+                None => l,
+            }            
+        }
 
     rule atom() -> Tree
-        = variable()
-        / "(" _ v:sum() _ ")" { v }
+        = "(" v:expr() ")" { v }
+        / float_number()
+        / number()
+        / variable()
+        / "-" _ v:atom() { Tree::function("negative".to_string(), vec![v]) }
+
+    rule float_number() -> Tree
+        = n:$(['0'..='9']+ "." ['0'..='9']+) { Tree::float(n.parse().unwrap()) }
+
+    rule number() -> Tree
+        = n:$(['0'..='9']+) { Tree::number(n.parse().unwrap()) }
 
     rule variable() -> Tree
-        = n:$(['a'..='z']+) { Tree::Variable { name: n.to_string() } }
+        = n:$(['a'..='z']+) { Tree::variable(n.to_string()) }
 
     rule _() = [' ' | '\n']*
 });
+
 
 #[derive(Debug, Clone)]
 pub struct Transformation {
@@ -45,6 +66,30 @@ pub enum Tree {
     },
     Variable {
         name: String,
+    },
+    Number {
+        value: i64,
+    },
+    Float {
+        value: f64,
+    }
+}
+
+impl Tree {
+    fn variable(name: String) -> Self {
+        Tree::Variable { name }
+    }
+
+    fn number(value: i64) -> Self {
+        Tree::Number { value }
+    }
+
+    fn float(value: f64) -> Self {
+        Tree::Float { value }
+    }
+
+    fn function(name: String, args: Vec<Tree>) -> Self {
+        Tree::Function { name, args }
     }
 }
 
@@ -68,6 +113,8 @@ fn find_variables(formula: &Tree, expr: &Tree) -> Option<Vec<Binding>> {
         (Tree::Variable { name }, expr) => {
             Some(vec![Binding { variable: name.clone(), formula: expr.clone() }])
         },
+        (Tree::Number { value: v1 }, Tree::Number { value: v2 })
+        if v1 == v2 => Some(vec![]),
         _ => None,
     }
 }
@@ -84,13 +131,15 @@ fn apply(formula: &Tree, bindings: &[Binding]) -> Option<Tree> {
             bindings.iter()
             .find(|x| &x.variable == name)
             .map(|x| x.formula.clone()),
+        x @ Tree::Number { .. } => Some(x.clone()),
+        x @ Tree::Float { .. } => Some(x.clone()),
     }
 }
 
 fn count_functions(formula: &Tree) -> usize {
     match formula {
         Tree::Function { args, .. } => args.iter().map(|x| count_functions(x)).sum::<usize>() + 1,
-        Tree::Variable { .. } => 1,
+        Tree::Variable { .. } | Tree::Number { .. } | Tree::Float { .. } => 1,
     }
 }
 
@@ -106,7 +155,7 @@ enum TreeIteratorState {
 impl Tree {
     fn is_leaf(&self) -> bool {
         match self {
-            Tree::Variable { .. } => true,
+            Tree::Variable { .. } | Tree::Number { .. } | Tree::Float { .. } => true,
             Tree::Function { args, .. } => args.is_empty(),
         }
     }
@@ -302,21 +351,77 @@ impl fmt::Display for Bindings {
     }   
 }
 
+fn eval(expr: &Tree) -> Option<f64> {
+    use Tree::*;
+    match expr {
+        Function { name, args } if name == "negative" && args.len() == 1 => Some(-eval(&args[0])?),
+        Function { name, args } if name == "+" && args.len() == 2 => Some(eval(&args[0])? + eval(&args[1])?),
+        Function { name, args } if name == "-" && args.len() == 2 => Some(eval(&args[0])? - eval(&args[1])?),
+        Function { name, args } if name == "*" && args.len() == 2 => Some(eval(&args[0])? * eval(&args[1])?),
+        Function { name, args } if name == "/" && args.len() == 2 => Some(eval(&args[0])? / eval(&args[1])?),
+        Variable { .. } => None,
+        Number { value } => Some(*value as f64),
+        Float { value } => Some(*value), 
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parser() {
+        use arithmetic::*;
+
+        macro_rules! test_expr {
+            ($($x:tt)*) => {{
+                let string = stringify!($($x)*);
+                let expr = expr(&string).expect(&format!("Cant't parse: {}", string));
+                assert_eq!(eval(&expr), Some(($($x)*) as f64));
+            }};
+        }
+
+        test_expr!(5.0);
+        test_expr!(-1.0);
+        test_expr!((5.0));
+        test_expr!((-(5.0)));
+        test_expr!(-(-(-5.0)));
+
+        test_expr!(1.0+2.0);
+        test_expr!(1.0-2.0);
+        test_expr!(1.0*2.0);
+        test_expr!(1.0/2.0);
+
+        test_expr!(1.0+-2.0);
+        test_expr!(1.0--2.0);
+        test_expr!(1.0*-2.0);
+        test_expr!(1.0/-2.0);
+
+        test_expr!(1.0+(-2.0));
+        test_expr!(1.0-2.0-3.0);
+        test_expr!(1.0+2.0+3.0);
+        test_expr!(1.0-2.0*2.0/1.0);
+        test_expr!(2.0*5.0*4.0/3.0);
+        test_expr!(1.0-(2.0-(3.0/5.0)));
+    }
+}
+
 fn main() {
-    use arithmetic::{transformation, expr};
+    use arithmetic::*;
     let formula = transformation("a+b <-> b+a").expect("wrong transformation");
-    let expr = expr("x*y*(c+d) + a*b*c").unwrap();
-    let bindings = find_variables(&formula.from, &expr).expect("cant find formula pattern");
+    let e = expr("x*y*(c+d) + a*b*c").unwrap();
+    let bindings = find_variables(&formula.from, &e).expect("cant find formula pattern");
     let new_expr = apply(&formula.to, &bindings).expect("cant apply formula");
 
     println!("\nFormula: {}\n", formula);
-    println!("Expression: {}\n", expr);
+    println!("Expression: {}\n", e);
     println!("Bindings:\n{}\n", Bindings { bindings });
     println!("Expression with applied formula: {}\n", new_expr);
 
-    println!("Count functions: {}", count_functions(&expr));
+    println!("Count functions: {}", count_functions(&e));
 
-    for (index, i) in expr.iter().enumerate() {
+    for (index, i) in e.iter().enumerate() {
         if let Some(bindings) = find_variables(&formula.from, i) {
             if let Some(new_expr) = apply(&formula.to, &bindings) {
                 println!("{}, {} ------> {}", index, i, new_expr);
@@ -325,4 +430,8 @@ fn main() {
         }
         println!("{}, {}", index, i);
     }
+
+    println!("{:#?}", expr("1-2*3/5^2-0"));
+
+    println!("{:#?}", formulas("a+b <-> b+a; a*b <-> b*a; a-b <-> a+(0-b);"))
 }
