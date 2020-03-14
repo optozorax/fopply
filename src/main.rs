@@ -303,8 +303,13 @@ impl<'a, T: 'a + fmt::Display> fmt::Display for PrintingBrackets<'a, T> {
 
 fn calc_brackets<'a>(formula: &'a Tree, current_op: &str, pos: usize) -> PrintingBrackets<'a, Tree> {
     if let Tree::Function { name: next, .. } = formula {
-        let is_print = next == "+" && current_op == "*" ||
-        next == current_op && pos == 0;
+        let is_print = 
+            current_op == "/" && pos == 0 && next != "*" && next != "/" ||
+            current_op == "/" && pos == 1 ||
+            current_op == "-" && pos == 0 && next != "+" && next != "-" ||
+            current_op == "-" && pos == 1 ||
+            current_op == "*" && next != "*" && next != "/" ||
+            current_op == "+" && next != "+" && next != "-";
         PrintingBrackets { is_print, t: formula }
     } else {
         PrintingBrackets { is_print: false, t: formula }
@@ -314,9 +319,18 @@ fn calc_brackets<'a>(formula: &'a Tree, current_op: &str, pos: usize) -> Printin
 impl fmt::Display for Tree {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Tree::Function { name, args } if name == "+" && args.len() == 2 => { write!(f, "{}+{}", calc_brackets(&args[0], "+", 0), calc_brackets(&args[1], "+", 1))  },
-            Tree::Function { name, args } if name == "*" && args.len() == 2 => { write!(f, "{}*{}", calc_brackets(&args[0], "*", 0), calc_brackets(&args[1], "*", 1))  },
+            Tree::Function { name, args } 
+                if args.len() == 2 => { 
+                    write!(f, 
+                        "{}{}{}", 
+                        calc_brackets(&args[0], name, 0), 
+                        name, 
+                        calc_brackets(&args[1], name, 1)
+                    )
+                },
             Tree::Variable { name } => { write!(f, "{}", name) },
+            Tree::Number { value } => { write!(f, "{}", value) },
+            Tree::Float { value } => { write!(f, "{}", value) }
             _ => Err(fmt::Error)
         }
     }
@@ -407,7 +421,63 @@ mod tests {
     }
 }
 
+fn apply_recursively(formula: Tree, transformation: &Transformation) -> (bool, Tree) {
+    if let Some(bindings) = find_variables(&transformation.from, &formula) {
+        if let Some(new_expr) = apply(&transformation.to, &bindings) {
+            return (true, new_expr);
+        }
+    }
+    match formula {
+        Tree::Function { mut args, name } => {
+            let mut result = false;
+            args = args.into_iter().map(|x| {
+                let (add_result, expr) = apply_recursively(x, transformation);
+                result |= add_result;
+                expr
+            }).collect();
+            (result, Tree::Function { name, args })
+        },
+        formula => (false, formula),
+    }
+}
+
+fn apply_formulas() {
+    use arithmetic::*;
+    let formula1 = transformation("a/b*c <-> a*c/b").expect("wrong transformation");
+    let formula2 = transformation("a/b/c <-> a/(b*c)").expect("wrong transformation");
+    let mut e = expr("a*b/c/(1+2)/3*a*d/e/f").unwrap();
+
+    println!();
+    println!("Formula1: {}", formula1);
+    println!("Formula2: {}", formula2);
+    println!();
+    println!("Expression: {}\n", e);
+
+    println!("Formula 1:");
+    loop {
+        let string = format!("{} ---> ", e);
+        let (b, e1) = apply_recursively(e, &formula1);
+        e = e1;
+        if !b { break; } else { println!("{}{}", string, e); }
+    }
+
+    println!();
+
+    println!("Formula 2:");
+    loop {
+        let string = format!("{} ---> ", e);
+        let (b, e1) = apply_recursively(e, &formula2);
+        e = e1;
+        if !b { break; } else { println!("{}{}", string, e); }
+    }
+
+    println!();
+}
+
 fn main() {
+    apply_formulas();
+    return;
+
     use arithmetic::*;
     let formula = transformation("a+b <-> b+a").expect("wrong transformation");
     let e = expr("x*y*(c+d) + a*b*c").unwrap();
