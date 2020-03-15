@@ -2,15 +2,11 @@ use itertools::Itertools;
 use colored::*;
 
 peg::parser!( grammar arithmetic() for str {
-    pub rule formulas() -> Vec<Transformation>
-        = r:(t:transformation() _ ";" _ {t})+ {
-            r
-        }
+    pub rule formulas() -> Vec<Transformation> 
+        = r:(t:transformation() _ ";" _ {t})+ { r }
 
     pub rule transformation() -> Transformation
-        = l:expr() _ "<->" _ r:expr() {
-            Transformation { from: l, to: r }
-        }
+        = l:expr() _ "<->" _ r:expr() { Transformation { from: l, to: r } }
 
     pub rule expr() -> Tree = precedence! {
         x:(@) _ "|" _ y:@ { Tree::function("|".to_string(), vec![x, y]) }
@@ -332,9 +328,10 @@ fn calc_brackets<'a>(formula: &'a Tree, current_op: &str, pos: usize) -> Printin
 
 impl fmt::Display for Tree {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let binary_operators = ["*", "+", "-", "/", "^"];
         match self {
             Tree::Function { name, args } 
-                if args.len() == 2 => { 
+                if args.len() == 2 && binary_operators.iter().any(|&x| x == name) => { 
                     write!(f, 
                         "{}{}{}", 
                         calc_brackets(&args[0], name, 0), 
@@ -348,6 +345,7 @@ impl fmt::Display for Tree {
                         calc_brackets(&args[1], name, 1)
                     )
                 },
+            Tree::Function { name, args } => { write!(f, "{}({})", name.bright_black(), args.iter().map(|x| format!("{}", x)).join(", ")) },
             Tree::Variable { name } => { write!(f, "{}", name) },
             Tree::Number { value } => { write!(f, "{}", value.to_string().bright_yellow()) },
             Tree::Float { value } => { write!(f, "{}", value.to_string().bright_yellow()) }
@@ -514,22 +512,67 @@ fn apply_formulas() {
     e = aplly_recursively_while_applied(e, &formula7).1;
 
     println!("{}\n{} {} {}\n", "result:".bright_green().bold(), start, "--->".bright_blue(), e);
-}    
+}
+
+fn apply_formulas_many() {
+    use arithmetic::*;
+    let mut formulas = vec![];
+    formulas.push(transformation("a+many(b, c) <-> many(a+b, a+c)").expect("wrong transformation"));
+    formulas.push(transformation("many(b, c)+a <-> many(b+a, c+a)").expect("wrong transformation"));
+    formulas.push(transformation("a-many(b, c) <-> many(a-b, a-c)").expect("wrong transformation"));
+    formulas.push(transformation("many(b, c)-a <-> many(b-a, c-a)").expect("wrong transformation"));
+    formulas.push(transformation("a*many(b, c) <-> many(a*b, a*c)").expect("wrong transformation"));
+    formulas.push(transformation("many(b, c)*a <-> many(b*a, c*a)").expect("wrong transformation"));
+    formulas.push(transformation("a/many(b, c) <-> many(a/b, a/c)").expect("wrong transformation"));
+    formulas.push(transformation("many(b, c)/a <-> many(b/a, c/a)").expect("wrong transformation"));
+    formulas.push(transformation("a^many(b, c) <-> many(a^b, a^c)").expect("wrong transformation"));
+    formulas.push(transformation("many(b, c)^a <-> many(b^a, c^a)").expect("wrong transformation"));
+    let mut e = expr("c*(a+many(1, 2))+1/2").unwrap();
+    let start = e.clone();
+
+    println!();
+    println!("{} {}\n", "Expression:".red(), e);
+    let mut b = true;
+    while b {
+        b = false;
+        for f in &formulas {
+            let (b1, e1) = aplly_recursively_while_applied(e, &f);
+            b |= b1;
+            e = e1;
+        }
+    }
+    
+    println!("{}\n{} {} {}\n", "result:".bright_green().bold(), start, "--->".bright_blue(), e);
+}   
 
 fn test_functions() {
     use arithmetic::*;
-    println!("{:#?}", expr("many( x + 1 , y + 1 )"));
+    let s = "many( x + 1 , y + 1 )";
+    println!();
+    println!("Input string: {:?}", s);
+    println!("Parsing function: {}", expr(s).unwrap());
+    println!();
 }
 
 fn test_and_or() {
     use arithmetic::*;
-    println!("{:#?}", expr("a+b = c & (0 = 1-1 | 0 != 2)"));
+    let s = "a+b = c & (0 = 1-1 | 0 != 2)";
+    println!();
+    println!("Input string: {:?}", s);
+    println!("Parsing and/or, and equalities: {}", expr(s).unwrap());
+    println!();
 }
 
 fn main() {
+    println!("---------------------------------------------");
+    apply_formulas_many();
+    println!("---------------------------------------------");
     apply_formulas();
+    println!("---------------------------------------------");
     test_functions();
+    println!("---------------------------------------------");
     test_and_or();
+    println!("---------------------------------------------");
     return;
 
     use arithmetic::*;
