@@ -1,4 +1,5 @@
 use itertools::Itertools;
+use colored::*;
 
 peg::parser!( grammar arithmetic() for str {
     pub rule formulas() -> Vec<Transformation>
@@ -294,7 +295,7 @@ struct PrintingBrackets<'a, T: 'a> {
 impl<'a, T: 'a + fmt::Display> fmt::Display for PrintingBrackets<'a, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.is_print {
-            write!(f, "({})", self.t)
+            write!(f, "{}{}{}", "(".cyan(), self.t, ")".cyan())
         } else {
             write!(f, "{}", self.t)
         }
@@ -308,8 +309,8 @@ fn calc_brackets<'a>(formula: &'a Tree, current_op: &str, pos: usize) -> Printin
             current_op == "/" && pos == 1 ||
             current_op == "-" && pos == 0 && next != "+" && next != "-" ||
             current_op == "-" && pos == 1 ||
-            current_op == "*" && next != "*" && next != "/" ||
-            current_op == "+" && next != "+" && next != "-";
+            current_op == "*" && next != "*" && next != "/";
+            //current_op == "+" && next == "+" && next == "-";
         PrintingBrackets { is_print, t: formula }
     } else {
         PrintingBrackets { is_print: false, t: formula }
@@ -324,13 +325,14 @@ impl fmt::Display for Tree {
                     write!(f, 
                         "{}{}{}", 
                         calc_brackets(&args[0], name, 0), 
-                        name, 
+                        //if name != "*" {name} else {""}, 
+                        name.bright_green(),
                         calc_brackets(&args[1], name, 1)
                     )
                 },
             Tree::Variable { name } => { write!(f, "{}", name) },
-            Tree::Number { value } => { write!(f, "{}", value) },
-            Tree::Float { value } => { write!(f, "{}", value) }
+            Tree::Number { value } => { write!(f, "{}", value.to_string().bright_yellow()) },
+            Tree::Float { value } => { write!(f, "{}", value.to_string().bright_yellow()) }
             _ => Err(fmt::Error)
         }
     }
@@ -344,7 +346,7 @@ impl fmt::Display for Binding {
 
 impl fmt::Display for Transformation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} <-> {}", self.from, self.to)
+        write!(f, "{} {} {}", self.from, "<->".bright_magenta(), self.to)
     }
 }
 
@@ -441,38 +443,60 @@ fn apply_recursively(formula: Tree, transformation: &Transformation) -> (bool, T
     }
 }
 
+fn aplly_recursively_while_applied(mut e: Tree, formula: &Transformation) -> (bool, Tree) {
+    let mut result = false;
+
+    let mut string = format!("{} {}\n", "Formula:".red(), formula);
+    for _ in 0..4 {
+        string += &format!("{} {} ", e, "--->".bright_blue());
+        let (b, e1) = apply_recursively(e, &formula);
+        e = e1;
+        if !b { break; } else { println!("{}{}", string, e); result = true; string = String::new(); }
+    }
+
+    if result {
+        println!();
+    }
+
+    (result, e)
+}
+
 fn apply_formulas() {
+    // TODO добавить формулы-or, которые применяются последовательно, и если хотя бы одна применилась, то возвращается true, и соответственно с ними добавить формулы с вычитанием
     use arithmetic::*;
     let formula1 = transformation("a/b*c <-> a*c/b").expect("wrong transformation");
     let formula2 = transformation("a/b/c <-> a/(b*c)").expect("wrong transformation");
-    let mut e = expr("a*b/c/(1+2)/3*a*d/e/f").unwrap();
+    let formula3 = transformation("a/b + c/d <-> (a*d+c*b)/(b*d)").expect("wrong transformation");
+    let formula3_1 = transformation("a + c/d <-> (a*d+c)/d").expect("wrong transformation");
+    let formula3_2 = transformation("a/b + c <-> (a+c*b)/b").expect("wrong transformation");
+    let formula4 = transformation("c*(a+b) <-> (a+b)*c").expect("wrong transformation");
+    let formula5 = transformation("(a+b)*c <-> a*c+b*c").expect("wrong transformation");
+    let formula6 = transformation("1*a <-> a").expect("wrong transformation");
+    let formula7 = transformation("a*1 <-> a").expect("wrong transformation");
+    let mut e = expr("c*(a+b)+1/2").unwrap();
+    let start = e.clone();
 
     println!();
-    println!("Formula1: {}", formula1);
-    println!("Formula2: {}", formula2);
-    println!();
-    println!("Expression: {}\n", e);
+    println!("{} {}\n", "Expression:".red(), e);
 
-    println!("Formula 1:");
-    loop {
-        let string = format!("{} ---> ", e);
-        let (b, e1) = apply_recursively(e, &formula1);
+    e = aplly_recursively_while_applied(e, &formula1).1;
+    e = aplly_recursively_while_applied(e, &formula2).1;
+    e = aplly_recursively_while_applied(e, &formula3).1;
+    e = aplly_recursively_while_applied(e, &formula3_1).1;
+    e = aplly_recursively_while_applied(e, &formula3_2).1;
+
+    let mut b = true;
+    while b {
+        e = aplly_recursively_while_applied(e, &formula4).1;
+        let (b1, e1) = aplly_recursively_while_applied(e, &formula5);    
+        b = b1;
         e = e1;
-        if !b { break; } else { println!("{}{}", string, e); }
     }
+    e = aplly_recursively_while_applied(e, &formula6).1;
+    e = aplly_recursively_while_applied(e, &formula7).1;
 
-    println!();
-
-    println!("Formula 2:");
-    loop {
-        let string = format!("{} ---> ", e);
-        let (b, e1) = apply_recursively(e, &formula2);
-        e = e1;
-        if !b { break; } else { println!("{}{}", string, e); }
-    }
-
-    println!();
-}
+    println!("result:\n{} ---> {}\n", start, e);
+}    
 
 fn main() {
     apply_formulas();
