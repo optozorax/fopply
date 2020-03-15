@@ -37,6 +37,7 @@ peg::parser!( grammar arithmetic() for str {
         = "(" v:expr() ")" { v }
         / float_number()
         / number()
+        / function()
         / variable()
         / "-" _ v:atom() { Tree::function("negative".to_string(), vec![v]) }
 
@@ -49,7 +50,10 @@ peg::parser!( grammar arithmetic() for str {
     rule variable() -> Tree
         = n:$(['a'..='z']+) { Tree::variable(n.to_string()) }
 
-    rule _() = [' ' | '\n']*
+    rule function() -> Tree
+        = n:$(['a'..='z' | 'A'..='Z' | '_'] ['a'..='z' | 'A'..='Z' | '_' | '0'..='9']*) "(" _ v:expr() ** (_ "," _) ")" { Tree::function(n.to_string(), v) }
+
+    rule _() = quiet!{[' ' | '\n' | '\t']*}
 });
 
 
@@ -325,8 +329,13 @@ impl fmt::Display for Tree {
                     write!(f, 
                         "{}{}{}", 
                         calc_brackets(&args[0], name, 0), 
-                        //if name != "*" {name} else {""}, 
-                        name.bright_green(),
+                        match &name[..] {
+                            "*" => "∙",
+                            "+" => " + ",
+                            "-" => " - ",
+                            name => name,
+                        }.bright_green(),
+                        //name.bright_green(),
                         calc_brackets(&args[1], name, 1)
                     )
                 },
@@ -495,11 +504,17 @@ fn apply_formulas() {
     e = aplly_recursively_while_applied(e, &formula6).1;
     e = aplly_recursively_while_applied(e, &formula7).1;
 
-    println!("result:\n{} ---> {}\n", start, e);
+    println!("{}\n{} {} {}\n", "result:".bright_green().bold(), start, "--->".bright_blue(), e);
 }    
+
+fn test_functions() {
+    use arithmetic::*;
+    println!("{:#?}", expr("many( x + 1 , y + 1 )"));
+}
 
 fn main() {
     apply_formulas();
+    test_functions();
     return;
 
     use arithmetic::*;
