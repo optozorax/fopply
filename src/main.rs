@@ -12,26 +12,34 @@ peg::parser!( grammar arithmetic() for str {
             Transformation { from: l, to: r }
         }
 
-    pub rule expr() -> Tree
-        = sum()
+    pub rule expr() -> Tree = precedence! {
+        x:(@) _ "|" _ y:@ { Tree::function("|".to_string(), vec![x, y]) }
+        --
+        x:(@) _ "&" _ y:@ { Tree::function("&".to_string(), vec![x, y]) }
+        --
+        e:equality() {e}
+    }
 
-    rule sum() -> Tree
-        = l:product() r:(_ z:$("+"/"-") _ p:product() { (z, p) })* {
-            r.into_iter().fold(l, |acc, (z, p)| Tree::function(z.to_string(), vec![acc, p]))
-        }
-
-    rule product() -> Tree
-        = l:power() r:(_ z:$("*"/"/") _ p:power() { (z, p) })* {
-            r.into_iter().fold(l, |acc, (z, p)| Tree::function(z.to_string(), vec![acc, p]))
-        }
-
-    rule power() -> Tree
-        = l:atom() _ r:("^" p:power() { p })? {
+    rule equality() -> Tree
+        = l:sumproduct() r:(_ z:$("="/"!="/">"/"<"/">="/"<=") _ p:sumproduct() { (z, p) })? {
             match r {
-                Some(r) => Tree::function("^".to_string(), vec![l, r]),
+                Some((z, p)) => Tree::function(z.to_string(), vec![l, p]),
                 None => l,
-            }            
+            }
         }
+
+    rule sumproduct() -> Tree = precedence! {
+        x:(@) _ "+" _ y:@ { Tree::function("+".to_string(), vec![x, y]) }
+        x:(@) _ "-" _ y:@ { Tree::function("-".to_string(), vec![x, y]) }
+                "-" _ y:@ { Tree::function("negative".to_string(), vec![y]) }
+        --
+        x:(@) _ "*" _ y:@ { Tree::function("*".to_string(), vec![x, y]) }
+        x:(@) _ "/" _ y:@ { Tree::function("/".to_string(), vec![x, y]) }
+        --
+        x:@ _ "^" _ y:(@) { Tree::function("^".to_string(), vec![x, y]) }
+        --
+        a:atom() {a}
+    }
 
     rule atom() -> Tree
         = "(" v:expr() ")" { v }
@@ -39,7 +47,6 @@ peg::parser!( grammar arithmetic() for str {
         / number()
         / function()
         / variable()
-        / "-" _ v:atom() { Tree::function("negative".to_string(), vec![v]) }
 
     rule float_number() -> Tree
         = n:$(['0'..='9']+ "." ['0'..='9']+) { Tree::float(n.parse().unwrap()) }
@@ -51,7 +58,9 @@ peg::parser!( grammar arithmetic() for str {
         = n:$(['a'..='z']+) { Tree::variable(n.to_string()) }
 
     rule function() -> Tree
-        = n:$(['a'..='z' | 'A'..='Z' | '_'] ['a'..='z' | 'A'..='Z' | '_' | '0'..='9']*) "(" _ v:expr() ** (_ "," _) ")" { Tree::function(n.to_string(), v) }
+        = n:$(['a'..='z' | 'A'..='Z' | '_'] ['a'..='z' | 'A'..='Z' | '_' | '0'..='9']*) "(" _ v:expr() ** (_ "," _) _ ")" { 
+            Tree::function(n.to_string(), v)
+        }
 
     rule _() = quiet!{[' ' | '\n' | '\t']*}
 });
@@ -512,9 +521,15 @@ fn test_functions() {
     println!("{:#?}", expr("many( x + 1 , y + 1 )"));
 }
 
+fn test_and_or() {
+    use arithmetic::*;
+    println!("{:#?}", expr("a+b = c & (0 = 1-1 | 0 != 2)"));
+}
+
 fn main() {
     apply_formulas();
     test_functions();
+    test_and_or();
     return;
 
     use arithmetic::*;
