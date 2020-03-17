@@ -1,0 +1,41 @@
+%YAML 1.2
+---
+name: Fopply formulas
+file_extensions: [fpl]
+scope: fopply.formulas
+contexts:
+  main:
+    - match: '\[[^\[\]]*\]'
+      scope: punctuation.definition.string.begin.example-c
+
+    # Comments begin with a '//' and finish at the end of the line
+    - match: '#'
+      scope: punctuation.definition.comment
+      push: line_comment
+
+    - match: '([a-zA-Z_]+)\('
+      captures:
+        1: variable.function
+
+    - match: '[a-zA-Z_]+'
+      scope: string.regexp
+
+    - match: '\$[a-zA-Z_]+'
+      scope: keyword.control
+
+    - match: '\$\$[a-zA-Z_]+'
+      scope: entity.name.struct
+
+    - match: '\b(-)?[0-9.]+\b'
+      scope: constant.numeric
+
+    - match: '(<->|->)'
+      scope: keyword.operator
+
+    - match: ';'
+      scope: punctuation.terminator
+
+  line_comment:
+    - meta_scope: comment.line
+    - match: $
+      pop: true

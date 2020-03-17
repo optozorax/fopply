@@ -1,0 +1,38 @@
+[sum]
+(a+b)+c <-> a+(b+c);
+a+b <-> b+a;
+a+0 <-> a;
+
+[sub]
+a+(-b) <-> a-b;
+a-a <-> 0
+
+[mul]
+(a*b)*c <-> a*(b*c);
+a*b <-> b*a;
+a*1 <-> a;
+
+[div]
+a*(1/b) <-> a/b;
+a/a <-> ifval(1, a != 0);
+
+[logic]
+a = a <-> $true;
+a <= a <-> $true;
+a != a <-> $false;
+a < a <-> $false;
+$true & a <-> a;
+$true | a <-> $true;
+not($true) <-> $false;
+not(not(a)) <-> a;
+a < b <-> b > a;
+a <= b <-> b >= a;
+
+[ifval]
+ifval(a, $false) = $empty;
+ifval(a, $true) = a;
+$$anypos(ifval(x, c)) = ifval($$anypos(x), c);
+
+[many]
+$$anypos(many(a, b)) = many($$anypos(a), $$anypos(b));
+many($empty, a) = a;
