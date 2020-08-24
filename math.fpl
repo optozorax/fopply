@@ -17,17 +17,32 @@ a*0 <-> 0;
 
 [div]
 a/a <-> part(a != 0, 1, $undefined);
-a/0 <-> $undefined {
-	a/0
-	^^^ div.1l
-	ifval(1, 0 != 0)
-	         ^^^^^^ neq.1
-	ifval(1, $false)
-	^^^^^^^^^^^^^^^^ ifval.0
-	$empty
-};
+a/0 <-> $undefined;
 a*(b/c) <-> b*(a/c);
 a/b/c <-> a/(b*c);
+a <-> part(b == 0, a, a*b/b) {
+	a
+	^ part.1r x := b == 0;
+	part(b == 0, a, a)
+	                ^ mul.2r
+	part(b == 0, a, a*1)
+	                  ^ part.2r else := $undefined;
+	part(b == 0, a, a*part($true, 1, $undefined))
+	^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ part.4l
+	part(not(b == 0), a*part($true, 1, $undefined), a)
+	^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ part.5l f(x) := a*x
+	part(not(b == 0), a*part($true & not(b == 0), 1, $undefined), a)
+	^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ part.4r
+	part(b == 0, a, a*part($true & not(b == 0), 1, $undefined))
+	                               ^^^^^^^^^^^ neq.1l
+	part(b == 0, a, a*part($true & b != 0, 1, $undefined))
+	                       ^^^^^^^^^^^^^^ and.2l
+	part(b == 0, a, a*part(b != 0 & $true, 1, $undefined))
+	                       ^^^^^^^^^^^^^^ and.4l
+	part(b == 0, a, a*part(b != 0, 1, $undefined))
+	                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^ div.1r
+	part(b == 0, a, a*b/b)
+};
 
 [not]
 not($true) <-> $false;
@@ -88,63 +103,10 @@ a >= a <-> $true {
 
 };
 
-[ifval]
-ifval(a, $false) <-> $empty;
-ifval(a, $true) <-> a;
-f@anypos(ifval(x, c)) -> ifval(f@anypos(x), c); # первое использование односторонности
-ifval(f@anypos(x), c) -> ifval(f@anypos(ifval(x, c)), c);
-ifval(ifval(a, b), c) <-> ifval(a, b & c);
-
-[many]
-f@anypos(many(a, b)) <-> many(f@anypos(a), f@anypos(b));
-many($empty, a) <-> a;
-a <-> many(ifval(a, b), ifval(a, not(b)));
-a <-> part(b == 0, a, a*b/b) {
-	a
-	^ part.1r x := b == 0;
-	part(b == 0, a, a)
-	                ^ mul.2r
-	part(b == 0, a, a*1)
-	                  ^ part.2r else := $undefined;
-	part(b == 0, a, a*part($true, 1, $undefined))
-	^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ part.4l
-	part(not(b == 0), a*part($true, 1, $undefined), a)
-	^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ part.5l f(x) := a*x
-	part(not(b == 0), a*part($true & not(b == 0), 1, $undefined), a)
-	^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ part.4r
-	part(b == 0, a, a*part($true & not(b == 0), 1, $undefined))
-	                               ^^^^^^^^^^^ neq.1l
-	part(b == 0, a, a*part($true & b != 0, 1, $undefined))
-	                       ^^^^^^^^^^^^^^ and.2l
-	part(b == 0, a, a*part(b != 0 & $true, 1, $undefined))
-	                       ^^^^^^^^^^^^^^ and.4l
-	part(b == 0, a, a*part(b != 0, 1, $undefined))
-	                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^ div.1r
-	part(b == 0, a, a*b/b)
-
-};
-a <-> many(ifval(a, b == 0), ifval(b*a/b, b != 0)) {
-	a
-	^ many.2l b := b == 0;
-	many(ifval(a, b == 0), ifval(a, not(b == 0)))
-	                                ^^^^^^^^^^^ neq.0r
-	many(ifval(a, b == 0), ifval(a, b != 0))
-	                             ^ mul.2r
-	many(ifval(a, b == 0), ifval(a*1, b != 0))
-	                       ^^^^^^^^^^^^^^^^^^ ifval.3r 1
-	many(ifval(a, b == 0), ifval(a*ifval(1, b != 0), b != 0))
-	                               ^^^^^^^^^^^^^^^^ div.1
-	many(ifval(a, b == 0), ifval(a*b/b, b != 0))
-	                             ^^^^^ div.2l
-	many(ifval(a, b == 0), ifval(b*a/b, b != 0))
-};
-
 [abs]
-abs(x) = many(ifval(x, x >= 0), ifval(-x, x < 0));
 abs(x) <-> part(x >= 0, x, -x);
 
 [sign]
-sign(x) = many(ifval(-1, x < 0), ifval(0, x == 0), ifval(1, x > 0));
 sign(x) <-> part(x < 0, -1, part(x > 0, 1, 0));
 
 [part]
