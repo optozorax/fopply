@@ -114,6 +114,6 @@ part(x, a, a) <-> a;
 part($true, then, else) <-> then;
 part($false, then, else) <-> else;
 part(cond, then, else) <-> part(not(cond), else, then);
-part(cond, f(part(cond2, then2, else2)), else) <-> part(cond, f(part(cond2 & cond, then2, else2)), else);
+part(cond, $f(part(cond2, then2, else2)), else) <-> part(cond, $f(part(cond2 & cond, then2, else2)), else);
 $f(part(cond, then, else)) <-> part(cond, $f(then), $f(else));
 $logic(part(cond, then, else)) <-> (cond & $logic(then)) | (cond & $logic(else));

@@ -1,6 +1,8 @@
 use itertools::Itertools;
 use colored::*;
 
+mod dev;
+
 peg::parser!( grammar arithmetic() for str {
     pub rule formulas() -> Vec<Transformation> 
         = r:(t:transformation() _ ";" _ {t})+ { r }

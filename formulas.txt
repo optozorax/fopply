@@ -12,7 +12,7 @@ gt(a: expr, b: expr) -> cond <-> a > b;
 le(a: expr, b: expr) -> cond <-> a <= b;
 ge(a: expr, b: expr) -> cond <-> a >= b;
 
-ifval(val: expr, if: cond) -> expr <-> {val: if};
+ifval(val: expr, if: cond, next: ifval) -> expr <-> {val: if};
 
 and(a: cond, b: cond) -> cond <-> a & b;
 or(a: cond, b: cond) -> cond <-> a | b;
@@ -55,11 +55,7 @@ not(not(a)) <-> a;
 
 
 [ifval]
-a+{b: c} <-> {a+b: c};
-a-{b: c} <-> {a+b: c};
-a*{b: c} <-> {a+b: c};
-a/{b: c} <-> {a+b: c};
-a^{b: c} <-> {a+b: c};
+a^{b: c, ..rest} <-> {a+b: c, a+{..rest}: true};
 
 {a: c_1}+{b: c_2} <-> {a+b: c_1 & c_2};
 {a: c_1}-{b: c_2} <-> {a-b: c_1 & c_2};
@@ -67,6 +63,24 @@ a^{b: c} <-> {a+b: c};
 {a: c_1}/{b: c_2} <-> {a/b: c_1 & c_2};
 {a: c_1}^{b: c_2} <-> {a^b: c_1 & c_2};
 
+a*b/c -> (a*b)/(c);
+
+[a: c_1, rest]
+
 
 [sum-mul]
 (a+b)*c <-> a*c + b*c;
+
+
+|x| = {x: x > 0, -x: x <= 0}
+
+a*b/c*d/e/f -> (a*b*d)/(c*e*f);
+
+a/b/c <-> a/(b*c);
+
+a/b*c <-> a*c/b;
+
+a*b/c*d/e/f
+a*b*d/c/e/f
+a*b*d/(c*e)/f
+a*b*d/(c*e*f)
