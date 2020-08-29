@@ -20,28 +20,28 @@ a/a <-> part(a != 0, 1, $undefined);
 a/0 <-> $undefined;
 a*(b/c) <-> b*(a/c);
 a/b/c <-> a/(b*c);
-a <-> part(b == 0, a, a*b/b) {
+a <-> part(b = 0, a, a*b/b) {
 	a
-	^ part.1r x := b == 0;
-	part(b == 0, a, a)
-	                ^ mul.2r
-	part(b == 0, a, a*1)
-	                  ^ part.2r else := $undefined;
-	part(b == 0, a, a*part($true, 1, $undefined))
-	^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ part.4l
-	part(not(b == 0), a*part($true, 1, $undefined), a)
-	^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ part.5l f(x) := a*x
-	part(not(b == 0), a*part($true & not(b == 0), 1, $undefined), a)
-	^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ part.4r
-	part(b == 0, a, a*part($true & not(b == 0), 1, $undefined))
-	                               ^^^^^^^^^^^ neq.1l
-	part(b == 0, a, a*part($true & b != 0, 1, $undefined))
-	                       ^^^^^^^^^^^^^^ and.2l
-	part(b == 0, a, a*part(b != 0 & $true, 1, $undefined))
-	                       ^^^^^^^^^^^^^^ and.4l
-	part(b == 0, a, a*part(b != 0, 1, $undefined))
-	                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^ div.1r
-	part(b == 0, a, a*b/b)
+	^ part.1r x := b = 0;
+	part(b = 0, a, a)
+	               ^ mul.2r
+	part(b = 0, a, a*1)
+	                 ^ part.2r else := $undefined;
+	part(b = 0, a, a*part($true, 1, $undefined))
+	^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ part.4l
+	part(not(b = 0), a*part($true, 1, $undefined), a)
+	^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ part.5l a*x := temp_change(x)
+	part(not(b = 0), a*part($true & not(b = 0), 1, $undefined), a)
+	^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ part.4r
+	part(b = 0, a, a*part($true & not(b = 0), 1, $undefined))
+	                              ^^^^^^^^^^ neq.1l
+	part(b = 0, a, a*part($true & b != 0, 1, $undefined))
+	                      ^^^^^^^^^^^^^^ and.2l
+	part(b = 0, a, a*part(b != 0 & $true, 1, $undefined))
+	                      ^^^^^^^^^^^^^^ and.4l
+	part(b = 0, a, a*part(b != 0, 1, $undefined))
+	                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^ div.1r
+	part(b = 0, a, a*b/b)
 };
 
 [not]
@@ -60,7 +60,7 @@ a = b <-> b = a;
 a = a <-> $true;
 
 [neq]
-a != b <-> not(a == b);
+a != b <-> not(a = b);
 a != b <-> b != a;
 a != a <-> $false;
 
@@ -69,7 +69,7 @@ a != a <-> $false;
 a & b <-> b & a;
 a & a <-> a;
 a & $true <-> a;
-a & $false <-> $false;
+a & $false <-> $fasle;
 
 [or]
 (a | b) | c <-> a | (b | c);
@@ -117,3 +117,12 @@ part(cond, then, else) <-> part(not(cond), else, then);
 part(cond, $f(part(cond2, then2, else2)), else) <-> part(cond, $f(part(cond2 & cond, then2, else2)), else);
 $f(part(cond, then, else)) <-> part(cond, $f(then), $f(else));
 $logic(part(cond, then, else)) <-> (cond & $logic(then)) | (cond & $logic(else));
+
+[brackets]
+brackets(a) <-> a;
+
+[test]
+1*(2+6-5*(a-part(x >= 0, x, 0))) <-> part(x >= 0, 1*(2+6-5*(a-x)), 1*(2+6-5*(a-0))) {
+	1*(2+6-5*(a-part(x >= 0, x, 0)))
+	^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ 1*(2+6-5*(a-x)) := $f(x)
+};
