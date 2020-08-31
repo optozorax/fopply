@@ -1,3 +1,7 @@
+use crate::parsing::FormulaPosition;
+use crate::expr::*;
+use crate::binding::*;
+
 pub struct ProofStep {
 	current_expression: Expression,
 	position: ExprPositionOwned,

@@ -1,3 +1,9 @@
+use std::ops::Range;
+
+use crate::expr::*;
+use crate::binding::*;
+use crate::utils::char_index::*;
+
 pub struct FormulaPosition {
 	pub module_name: String,
 	pub position: usize,
@@ -19,7 +25,7 @@ impl GetInnerExpression for ExpressionParsing {
 // TODO должно возвращать позицию, чтобы потом по ^^^ можно было искать то что надо
 // TODO переделать на собственный алгоритм precedence!(), равенства должны парситься обычно со стороны парсера, это уже потом проверка типов должна говорить что типы не совпали
 peg::parser!(
-	grammar parsing() for str {
+	pub grammar parser() for str {
 		pub rule formulas() -> Vec<Formula> 
 			= r:(t:formula() _ ";" _ {t})+ { r }
 
@@ -249,7 +255,7 @@ peg::parser!(
 	}
 );
 
-fn clear_parsing_info(expr: ExpressionParsing) -> Expression {
+pub fn clear_parsing_info(expr: ExpressionParsing) -> Expression {
 	use ExpressionMeta::*;
 
 	Expression(
@@ -270,7 +276,7 @@ fn clear_parsing_info(expr: ExpressionParsing) -> Expression {
 	)
 }
 
-fn process_expression_parsing(expr: ExpressionParsing) -> (Expression, Vec<(Vec<usize>, Range<usize>)>) {
+pub fn process_expression_parsing(expr: ExpressionParsing) -> (Expression, Vec<(Vec<usize>, Range<usize>)>) {
 	fn process(
 		expr: ExpressionMeta<ExpressionParsing>, 
 		current_position: &mut Vec<usize>, 

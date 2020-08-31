@@ -1,21 +1,25 @@
+use fopply::parsing::*;
+use fopply::binding::*;
+use fopply::utils::char_index::*;
+
 #[test]
 fn test() {
-	assert!(parsing::expr("(a+b)+c").is_ok());
-	assert!(parsing::expr("a+b+c").is_ok());
-	assert!(parsing::expr("a+sin(b)").is_ok());
-	assert!(parsing::expr("a+$f(b)").is_ok());
-	assert!(parsing::expr("$true+$f(1)-a#n").is_ok());
+	assert!(parser::expr("(a+b)+c").is_ok());
+	assert!(parser::expr("a+b+c").is_ok());
+	assert!(parser::expr("a+sin(b)").is_ok());
+	assert!(parser::expr("a+$f(b)").is_ok());
+	assert!(parser::expr("$true+$f(1)-a#n").is_ok());
 
-	let expression = parsing::expr("part(b = 0, a, a*part($true, 1, $undefined))").unwrap();
+	let expression = parser::expr("part(b = 0, a, a*part($true, 1, $undefined))").unwrap();
 	let expression = clear_parsing_info(expression);
-	let formula = parsing::formula("part(cond, then, else) <-> part(not(cond), else, then)").unwrap();
+	let formula = parser::formula("part(cond, then, else) <-> part(not(cond), else, then)").unwrap();
 
 	let mut bindings = BindingStorage::default();
 
 	find_bindings(expression, formula.left, &mut bindings).unwrap();
 	let result = apply_bindings(formula.right, &bindings).unwrap();
 
-	let should_be = parsing::expr("part(not(b = 0), a*part($true, 1, $undefined), a)").unwrap();
+	let should_be = parser::expr("part(not(b = 0), a*part($true, 1, $undefined), a)").unwrap();
 	let should_be = clear_parsing_info(should_be);
 
 	assert_eq!(result, should_be);
@@ -23,18 +27,18 @@ fn test() {
 
 #[test]
 fn test2() {
-	let expression = parsing::expr("a").unwrap();
+	let expression = parser::expr("a").unwrap();
 	let expression = clear_parsing_info(expression);
-	let formula = parsing::formula("part(x, a, a) <-> a").unwrap();
+	let formula = parser::formula("part(x, a, a) <-> a").unwrap();
 
 	let mut bindings = BindingStorage::default();
 
-	bindings.add(parsing::binding("x := b = 0").unwrap());
+	bindings.add(parser::binding("x := b = 0").unwrap());
 
 	find_bindings(expression, formula.right, &mut bindings).unwrap();
 	let result = apply_bindings(formula.left, &bindings).unwrap();
 
-	let should_be = parsing::expr("part(b = 0, a, a)").unwrap();
+	let should_be = parser::expr("part(b = 0, a, a)").unwrap();
 	let should_be = clear_parsing_info(should_be);
 
 	assert_eq!(result, should_be);
@@ -43,8 +47,8 @@ fn test2() {
 macro_rules! same {
 	($a:expr, $b:expr) => {
 		assert_eq!(
-			clear_parsing_info(parsing::expr($a).unwrap()), 
-			clear_parsing_info(parsing::expr($b).unwrap())
+			clear_parsing_info(parser::expr($a).unwrap()), 
+			clear_parsing_info(parser::expr($b).unwrap())
 		);
 	};
 }
@@ -87,7 +91,7 @@ fn parsing_info() {
 
 	//let string = "part(b =      0, a, a *part($true, 1, $undefined))";
 	let string = "a+b+c+d^f*e";
-	let parsed = parsing::expr(string).unwrap();
+	let parsed = parser::expr(string).unwrap();
 	let (_, positions) = process_expression_parsing(parsed);
 	let positions: Vec<_> = positions
 		.into_iter()

@@ -1,3 +1,6 @@
+use crate::expr::*;
+use std::collections::BTreeMap;
+
 /// `left <-> right`
 #[derive(Clone, Debug)]
 pub struct Formula {
@@ -31,28 +34,28 @@ pub enum Binding {
 }
 
 impl Binding {
-	fn for_pattern(from_name: String, to_value: Expression) -> Binding {
+	pub fn for_pattern(from_name: String, to_value: Expression) -> Binding {
 		Binding::Pattern {
 			key: from_name,
 			value: to_value,
 		}
 	}
 
-	fn for_constrained_pattern(from_name: String, to_value: Expression) -> Binding {
+	pub fn for_constrained_pattern(from_name: String, to_value: Expression) -> Binding {
 		Binding::ConstrainedPattern {
 			key: from_name,
 			value: to_value,
 		}
 	}
 
-	fn for_any_function_to_named_function(from_any_function_name: String, to_named_function_name: String) -> Binding {
+	pub fn for_any_function_to_named_function(from_any_function_name: String, to_named_function_name: String) -> Binding {
 		Binding::AnyFunctionToNamedFunction {
 			key: from_any_function_name,
 			value: to_named_function_name,
 		}
 	}
 
-	fn for_any_function_to_any_function(from_any_function_name: String, to_any_function_name: String) -> Binding {
+	pub fn for_any_function_to_any_function(from_any_function_name: String, to_any_function_name: String) -> Binding {
 		Binding::AnyFunctionToAnyFunction {
 			key: from_any_function_name,
 			value: to_any_function_name,
@@ -139,7 +142,7 @@ impl BindingStorage {
 	}
 }
 
-fn constrained_pattern_check(expr: Expression, name: &str) -> Option<Expression> {
+pub fn constrained_pattern_check(expr: Expression, name: &str) -> Option<Expression> {
 	use ExpressionMeta::*;
 
 	match &name[..] {

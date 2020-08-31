@@ -1,9 +1,3 @@
-trait GetInnerExpression: Sized {
-	fn get_inner_expression(self) -> ExpressionMeta<Self>;
-	fn get_inner_expression_ref(&self) -> &ExpressionMeta<Self>;
-	fn get_inner_expression_mut(&mut self) -> &mut ExpressionMeta<Self>;
-}
-
 /// Обобщённое выражение, нужно для возможности делать парсинг
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ExpressionMeta<ArgType> {
@@ -44,9 +38,15 @@ pub enum ExpressionMeta<ArgType> {
 	},
 }
 
+pub trait GetInnerExpression: Sized {
+	fn get_inner_expression(self) -> ExpressionMeta<Self>;
+	fn get_inner_expression_ref(&self) -> &ExpressionMeta<Self>;
+	fn get_inner_expression_mut(&mut self) -> &mut ExpressionMeta<Self>;
+}
+
 /// Выражение
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Expression(ExpressionMeta<Expression>);
+pub struct Expression(pub ExpressionMeta<Expression>);
 
 impl GetInnerExpression for Expression {
 	fn get_inner_expression(self) -> ExpressionMeta<Self> { self.0 }

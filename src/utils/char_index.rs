@@ -1,5 +1,8 @@
+use std::ops::Range;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct CharIndex(usize);
+pub struct CharIndex(pub usize);
+
 pub fn get_char_range(s: &str, range: Range<usize>) -> Option<Range<CharIndex>> {
 	let mut iter = s
 		.char_indices()
