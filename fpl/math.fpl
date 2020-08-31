@@ -94,6 +94,9 @@
 4. a & $true <-> a;
 5. a & $false <-> $fasle;
 
+[andeq]
+1. a = b & $f(a) <-> a = b & $f(b);
+
 [or]
 1. (a | b) | c <-> a | (b | c);
 2. a | b <-> b | a;
