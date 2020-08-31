@@ -1,5 +1,5 @@
 [package]
-name = "rust"
+name = "fopply"
 version = "0.1.0"
 authors = ["Ilya Sheprut <optozorax@gmail.com>"]
 edition = "2018"
