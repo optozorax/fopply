@@ -2,9 +2,15 @@ use std::ops::Range;
 use std::fmt::Debug;
 use std::collections::BTreeMap;
 
+trait GetInnerExpression: Sized {
+	fn get_inner_expression(self) -> ExpressionMeta<Self>;
+	fn get_inner_expression_ref(&self) -> &ExpressionMeta<Self>;
+	fn get_inner_expression_mut(&mut self) -> &mut ExpressionMeta<Self>;
+}
+
 /// Обобщённое выражение, нужно для возможности делать парсинг
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum ExpressionMeta<ArgType: Clone + Debug + Eq + PartialEq> {
+pub enum ExpressionMeta<ArgType> {
 	/// `a`, `b`, `c` - матчится с чем угодно, именованная часть выражения
 	Pattern {
 		name: String
@@ -45,6 +51,12 @@ pub enum ExpressionMeta<ArgType: Clone + Debug + Eq + PartialEq> {
 /// Выражение
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Expression(ExpressionMeta<Expression>);
+
+impl GetInnerExpression for Expression {
+	fn get_inner_expression(self) -> ExpressionMeta<Self> { self.0 }
+	fn get_inner_expression_ref(&self) -> &ExpressionMeta<Self> { &self.0 }
+	fn get_inner_expression_mut(&mut self) -> &mut ExpressionMeta<Self> { &mut self.0 }
+}
 
 /// `left <-> right`
 #[derive(Clone, Debug)]
@@ -300,47 +312,53 @@ pub struct FormulaPosition {
 }
 
 pub struct ExprPositionOwned(Vec<usize>);
-pub struct ExprPosition<'a>(&'a [usize]);
+pub struct ExprPosition([usize]);
+
+// TODO impl Borrow<ExprPosition> for ExprPositionOwned
 
 pub struct ProofStep {
+	current_expression: Expression,
 	position: ExprPositionOwned,
 	used_formula: FormulaPosition,
 	bindings: Vec<Binding>,
-	// ??? for $f(x) = a*x
+	// ??? for $f(x) = a*x, таких может быть несколько, и они могут применяться рекурсивно
 }
 
 pub struct Proof {
-	start: Expression,
 	steps: Vec<ProofStep>,
-	end: Expression,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct ExpressionParsing {
+pub struct ExpressionParsing {
 	span: Range<usize>,
 	node: ExpressionMeta<ExpressionParsing>,
 }
 
+impl GetInnerExpression for ExpressionParsing {
+	fn get_inner_expression(self) -> ExpressionMeta<Self> { self.node }
+	fn get_inner_expression_ref(&self) -> &ExpressionMeta<Self> { &self.node }
+	fn get_inner_expression_mut(&mut self) -> &mut ExpressionMeta<Self> { &mut self.node }
+}
+
 // TODO должно возвращать позицию, чтобы потом по ^^^ можно было искать то что надо
+// TODO переделать на собственный алгоритм precedence!(), равенства должны парситься обычно со стороны парсера, это уже потом проверка типов должна говорить что типы не совпали
 peg::parser!(
 	grammar parsing() for str {
 		pub rule formulas() -> Vec<Formula> 
 			= r:(t:formula() _ ";" _ {t})+ { r }
 
 		pub rule formula() -> Formula
-			= left:expr() _ "<->" _ right:expr() { Formula { left, right } }
-
-		pub rule expr() -> Expression = precedence! {
-			x:(@) _ "|" _ y:@ { Expression(ExpressionMeta::NamedFunction { name: "|".to_string(), args: vec![x, y] }) }
-			--
-			x:(@) _ "&" _ y:@ { Expression(ExpressionMeta::NamedFunction { name: "&".to_string(), args: vec![x, y] }) }
-			--
-			e:equality() {e}
-		}
+			= left:expr() _ "<->" _ right:expr() {
+				Formula { 
+					left: clear_parsing_info(left), 
+					right: clear_parsing_info(right) 
+				}
+			}
 
 		pub rule binding() -> Binding
-			= name:identifier() _ ":=" _ to:expr() { Binding::for_pattern(name, to) }
+			= name:identifier() _ ":=" _ to:expr() { Binding::for_pattern(name, clear_parsing_info(to)) }
 			/ name:identifier() "#" constrained_pattern_name:identifier() _ ":=" _ to:expr() {? || -> Result<_, _> {
+				let to = clear_parsing_info(to);
 				let to_matched = constrained_pattern_check(to, &constrained_pattern_name)
 					.ok_or("This not fit to constrain")?;
 				Ok(Binding::for_constrained_pattern(name, to_matched))
@@ -356,28 +374,134 @@ peg::parser!(
 				}
 			}
 
-		rule equality() -> Expression
-			= l:sumproduct() r:(_ z:$("="/"!="/">"/"<"/">="/"<=") _ p:sumproduct() { (z, p) })? {
+		pub rule visual_positon() -> Range<CharIndex>
+			= before:$("." " "*) position:$("^"+) { CharIndex(before.len())..CharIndex(before.len() + position.len()) }
+			/ position:$("^"+) { CharIndex(0)..CharIndex(position.len()) }
+
+		pub rule expr() -> ExpressionParsing
+			= or()
+
+		rule or() -> ExpressionParsing
+			= start:position!() 
+			  l:and() 
+			  r:(_ z:$("|") _ p:or() { (z, p) })? 
+			  end:position!() 
+			{
 				match r {
-					Some((z, p)) => Expression(ExpressionMeta::NamedFunction { name: z.to_string(), args: vec![l, p] }),
+					Some((z, p)) => ExpressionParsing {
+						span: start..end,
+						node: ExpressionMeta::NamedFunction { name: z.to_string(), args: vec![l, p] }
+					},
 					None => l,
 				}
 			}
 
-		rule sumproduct() -> Expression = precedence! {
-			x:(@) _ "+" _ y:@ { Expression(ExpressionMeta::NamedFunction { name: "+".to_string(), args: vec![x, y] }) }
-			x:(@) _ "-" _ y:@ { Expression(ExpressionMeta::NamedFunction { name: "-".to_string(), args: vec![x, y] }) }
-					"-" _ y:@ { Expression(ExpressionMeta::NamedFunction { name: "negative".to_string(), args: vec![y] }) }
-			--
-			x:(@) _ "*" _ y:@ { Expression(ExpressionMeta::NamedFunction { name: "*".to_string(), args: vec![x, y] }) }
-			x:(@) _ "/" _ y:@ { Expression(ExpressionMeta::NamedFunction { name: "/".to_string(), args: vec![x, y] }) }
-			--
-			x:@ _ "^" _ y:(@) { Expression(ExpressionMeta::NamedFunction { name: "^".to_string(), args: vec![x, y] }) }
-			--
-			a:atom() { a }
-		}
+		rule and() -> ExpressionParsing
+			= start:position!() 
+			  l:equality() 
+			  r:(_ z:$("&") _ p:and() { (z, p) })? 
+			  end:position!() 
+			{
+				match r {
+					Some((z, p)) => ExpressionParsing {
+						span: start..end,
+						node: ExpressionMeta::NamedFunction { name: z.to_string(), args: vec![l, p] }
+					},
+					None => l,
+				}
+			}
 
-		rule atom() -> Expression
+		rule equality() -> ExpressionParsing
+			= start:position!() 
+			  l:sum() 
+			  r:(_ z:$("="/"!="/">"/"<"/">="/"<=") _ p:sum() { (z, p) })? 
+			  end:position!() 
+			{
+				match r {
+					Some((z, p)) => ExpressionParsing {
+						span: start..end,
+						node: ExpressionMeta::NamedFunction { name: z.to_string(), args: vec![l, p] }
+					},
+					None => l,
+				}
+			}
+
+		rule sum() -> ExpressionParsing
+			= start:position!() 
+			  l:product() 
+			  r:(_ z:$("+"/"-") _ p:sum() { (z, p) })? 
+			  end:position!() 
+			{
+				match r {
+					Some((z, p)) => ExpressionParsing {
+						span: start..end,
+						node: ExpressionMeta::NamedFunction { name: z.to_string(), args: vec![l, p] }
+					},
+					None => l,
+				}
+			}
+			/ start:position!() "-" _ l:product() end:position!() {
+				ExpressionParsing {
+					span: start..end,
+					node: ExpressionMeta::NamedFunction { name: "negative".to_string(), args: vec![l] }
+				}
+			}
+
+		rule product() -> ExpressionParsing
+			= start:position!() 
+			  l:power() 
+			  r:(_ z:$("*"/"/") _ p:product() { (z, p) })? 
+			  end:position!() 
+			{
+				match r {
+					Some((z, p)) => ExpressionParsing {
+						span: start..end,
+						node: ExpressionMeta::NamedFunction { name: z.to_string(), args: vec![l, p] }
+					},
+					None => l,
+				}
+			}
+
+		rule power() -> ExpressionParsing
+			= start:position!() 
+			  l:atom()
+			  r:(_ z:$("^") _ p:power() { (z, p) })? 
+			  end:position!() 
+			{
+				match r {
+					Some((z, p)) => match p.node {
+						ExpressionMeta::NamedFunction { name, mut args } if name == z && args.len() == 2 => {
+							let c = args.pop().unwrap();
+							let b = args.pop().unwrap();
+							let a = l;
+
+							let a_pos = start;
+							let b_pos = p.span.start;
+							let c_pos = p.span.end;
+
+							let l = ExpressionParsing {
+								span: a_pos..b_pos,
+								node: ExpressionMeta::NamedFunction { name: z.to_string(), args: vec![a, b] }
+							};
+
+							ExpressionParsing {
+								span: b_pos..c_pos,
+								node: ExpressionMeta::NamedFunction { name: z.to_string(), args: vec![l, c] }
+							}
+						},
+						other => {
+							let p = ExpressionParsing { span: p.span, node: other };
+							ExpressionParsing {
+								span: start..end,
+								node: ExpressionMeta::NamedFunction { name: z.to_string(), args: vec![l, p] }
+							}
+						},
+					},
+					None => l,
+				}
+			}
+
+		rule atom() -> ExpressionParsing
 			= "(" v:expr() ")" { v }
 
 			/ any_function()
@@ -389,29 +513,53 @@ peg::parser!(
 
 			/ integer_value()
 
-		rule pattern() -> Expression
-			= name:identifier() { Expression(ExpressionMeta::Pattern { name }) }
-
-		rule constrained_pattern() -> Expression
-			= name:identifier() "#" constrained_pattern_name:identifier() { 
-				Expression(ExpressionMeta::ConstrainedPattern { name, constrained_pattern_name })
+		rule pattern() -> ExpressionParsing
+			= start:position!() name:identifier() end:position!() { 
+				ExpressionParsing {
+					span: start..end,
+					node: ExpressionMeta::Pattern { name } 
+				}
 			}
 
-		rule function() -> Expression
-			= name:identifier() "(" _ args:expr() ** (_ "," _) _ ")" { 
-				Expression(ExpressionMeta::NamedFunction { name, args })
+		rule constrained_pattern() -> ExpressionParsing
+			= start:position!() name:identifier() "#" constrained_pattern_name:identifier() end:position!() { 
+				ExpressionParsing {
+					span: start..end,
+					node: ExpressionMeta::ConstrainedPattern { name, constrained_pattern_name }
+				}
 			}
 
-		rule any_function() -> Expression
-			= "$" name:identifier() "(" _ args:expr() ** (_ "," _) _ ")" { 
-				Expression(ExpressionMeta::AnyFunction { name, args })
+		rule function() -> ExpressionParsing
+			= start:position!() name:identifier() "(" _ args:expr() ** (_ "," _) _ ")" end:position!() { 
+				ExpressionParsing {
+					span: start..end,
+					node: ExpressionMeta::NamedFunction { name, args }
+				}
 			}
 
-		rule integer_value() -> Expression
-			= value:integer() { Expression(ExpressionMeta::IntegerValue { value: value as i64 }) }
+		rule any_function() -> ExpressionParsing
+			= start:position!() "$" name:identifier() "(" _ args:expr() ** (_ "," _) _ ")" end:position!() { 
+				ExpressionParsing {
+					span: start..end,
+					node: ExpressionMeta::AnyFunction { name, args }
+				}
+			}
 
-		rule named_value() -> Expression
-			= start:position!() "$" name:identifier() end:position!() { Expression(ExpressionMeta::NamedValue { name }) }
+		rule integer_value() -> ExpressionParsing
+			= start:position!() value:integer() end:position!() { 
+				ExpressionParsing {
+					span: start..end,
+					node: ExpressionMeta::IntegerValue { value: value as i64 }
+				}
+			}
+
+		rule named_value() -> ExpressionParsing
+			= start:position!() "$" name:identifier() end:position!() { 
+				ExpressionParsing {
+					span: start..end,
+					node: ExpressionMeta::NamedValue { name }
+				}
+			}
 
 		rule integer() -> u64
 			= n:$(['0'..='9']+) {? n.parse().map_err(|_| "number is too big") }
@@ -425,8 +573,112 @@ peg::parser!(
 	}
 );
 
-fn process_expression_parsing(expr: ExpressionParsing) -> (Expression, Vec<(ExprPositionOwned, Range<usize>)>) {
-	unimplemented!()
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct CharIndex(usize);
+pub fn get_char_range(s: &str, range: Range<usize>) -> Option<Range<CharIndex>> {
+	let mut iter = s
+		.char_indices()
+		.enumerate()
+		.map(|(char_position, (index, _))| (CharIndex(char_position), index))
+
+		// TODO сделать чтобы были ленивые вычисления
+		.chain(std::iter::once((CharIndex(s.chars().count()), s.len())));
+	let start = iter.find(|(_, index)| *index == range.start)?.0;
+	let end = iter.find(|(_, index)| *index == range.end)?.0;
+	Some(start..end)
+}
+
+fn clear_parsing_info(expr: ExpressionParsing) -> Expression {
+	use ExpressionMeta::*;
+
+	Expression(
+		match expr.node {
+			AnyFunction { name, args } => 
+				AnyFunction { name, args: args.into_iter().map(clear_parsing_info).collect() },
+			NamedFunction { name, args } =>
+				NamedFunction { name, args: args.into_iter().map(clear_parsing_info).collect() },
+			Pattern { name } => 
+				Pattern { name },
+			ConstrainedPattern { name, constrained_pattern_name } => 
+				ConstrainedPattern { name, constrained_pattern_name },
+			NamedValue { name } => 
+				NamedValue { name },
+			IntegerValue { value } => 
+				IntegerValue { value },
+		}
+	)
+}
+
+fn process_expression_parsing(expr: ExpressionParsing) -> (Expression, Vec<(Vec<usize>, Range<usize>)>) {
+	fn process(
+		expr: ExpressionMeta<ExpressionParsing>, 
+		current_position: &mut Vec<usize>, 
+		storage: &mut Vec<(Vec<usize>, Range<usize>)>
+	) -> Expression {
+		use ExpressionMeta::*;
+
+		let mut process_args = |args: Vec<ExpressionParsing>| {
+			args.into_iter().enumerate().map(|(pos, arg)| {
+				current_position.push(pos);
+				let ExpressionParsing { span, node } = arg;
+				storage.push((current_position.clone(), span));
+				let result = process(node, current_position, storage);
+				current_position.pop().unwrap();
+				result
+			}).collect()
+		};
+
+		Expression(
+			match expr {
+				AnyFunction { name, args } => 
+					AnyFunction { 
+						name, 
+						args: process_args(args),
+					},
+				NamedFunction { name, args } =>
+					NamedFunction { 
+						name, 
+						args: process_args(args),
+					},
+				Pattern { name } => 
+					Pattern { name },
+				ConstrainedPattern { name, constrained_pattern_name } => 
+					ConstrainedPattern { name, constrained_pattern_name },
+				NamedValue { name } => 
+					NamedValue { name },
+				IntegerValue { value } => 
+					IntegerValue { value },
+			}
+		)
+	}
+
+	let mut storage = Vec::new();
+	let mut current_position = Vec::new();
+	let ExpressionParsing { span, node } = expr;
+	storage.push((current_position.clone(), span));
+	(process(node, &mut current_position, &mut storage), storage)
+}
+
+// TODO сделать тут Result, который возвращает позицию
+fn get<'a, Expr: GetInnerExpression>(expr: &'a Expr, position: &[usize]) 
+	-> Option<&'a Expr>
+{
+	use ExpressionMeta::*;
+
+	match position {
+		[start, tail @ ..] => {
+			match expr.get_inner_expression_ref() {
+				AnyFunction { name: _, args } |
+				NamedFunction { name: _, args } => get(args.get(*start)?, tail),
+
+				Pattern { .. } |
+				ConstrainedPattern { .. } |
+				NamedValue { .. } |
+				IntegerValue { .. } => None,
+			}
+		},
+		[] => Some(expr),
+	}
 }
 
 #[cfg(test)]
@@ -442,6 +694,7 @@ mod tests {
 		assert!(parsing::expr("$true+$f(1)-a#n").is_ok());
 
 		let expression = parsing::expr("part(b = 0, a, a*part($true, 1, $undefined))").unwrap();
+		let expression = clear_parsing_info(expression);
 		let formula = parsing::formula("part(cond, then, else) <-> part(not(cond), else, then)").unwrap();
 
 		let mut bindings = BindingStorage::default();
@@ -450,6 +703,7 @@ mod tests {
 		let result = apply_bindings(formula.right, &bindings).unwrap();
 
 		let should_be = parsing::expr("part(not(b = 0), a*part($true, 1, $undefined), a)").unwrap();
+		let should_be = clear_parsing_info(should_be);
 
 		assert_eq!(result, should_be);
 	}
@@ -457,6 +711,7 @@ mod tests {
 	#[test]
 	fn test2() {
 		let expression = parsing::expr("a").unwrap();
+		let expression = clear_parsing_info(expression);
 		let formula = parsing::formula("part(x, a, a) <-> a").unwrap();
 
 		let mut bindings = BindingStorage::default();
@@ -467,53 +722,78 @@ mod tests {
 		let result = apply_bindings(formula.left, &bindings).unwrap();
 
 		let should_be = parsing::expr("part(b = 0, a, a)").unwrap();
+		let should_be = clear_parsing_info(should_be);
 
 		assert_eq!(result, should_be);
 	}
-}
 
-/*
-
-```rust
-struct BindingSetter(...);
-impl BindingSetter {
-	/// Если уже присутствует, то сравнивает равны ли они, если не равны, то отвергает
-	fn add(&mut self, binding: Binding) -> Option<()> {
-		...
+	macro_rules! same {
+		($a:expr, $b:expr) => {
+			assert_eq!(
+				clear_parsing_info(parsing::expr($a).unwrap()), 
+				clear_parsing_info(parsing::expr($b).unwrap())
+			);
+		};
 	}
 
-	fn to_getter(self) -> BindingGetter {
-		...
+	#[test]
+	fn associativity() {
+		same!("a+b+c", "a+(b+c)");
+		same!("a+b*c", "a+(b*c)");
+		same!("a*b+c", "(a*b)+c");
+		same!("a*b*c", "a*(b*c)");
+		same!("a^b^c", "(a^b)^c");
+	}
+
+	#[test]
+	fn priority() {
+		same!("a*b+c*d", "(a*b)+(c*d)");
+		same!("a^b*c^d", "(a^b)*(c^d)");
+	}
+
+	#[test]
+	fn parsing_info() {
+		macro_rules! debug_unwrap {
+			($name:ident( $($arg:expr),* )) => {{
+				let mut debug_string = String::from(stringify!($name));
+				debug_string.push_str("(");
+				$(
+					debug_string.push_str(concat!(stringify!($arg), " = "));
+					debug_string.push_str(format!("{:?}", $arg).as_ref());
+					debug_string.push_str(", ");
+				)*
+				if debug_string.ends_with(", ") {
+					debug_string.pop();
+					debug_string.pop();
+				}
+				debug_string.push_str(")");
+
+				$name($($arg),*).unwrap_or_else(|| panic!(debug_string))
+			}};
+		}
+
+		//let string = "part(b =      0, a, a *part($true, 1, $undefined))";
+		let string = "a+b+c+d^f*e";
+		let parsed = parsing::expr(string).unwrap();
+		let (_, positions) = process_expression_parsing(parsed);
+		let positions: Vec<_> = positions
+			.into_iter()
+			.map(|(pos, range)| {
+				let new_range = debug_unwrap!(get_char_range(string, range));
+				(pos, new_range)
+			})
+			.collect();
+
+		for (pos, range) in positions {
+			use std::iter;
+			println!(
+				"{eq}\n{spaces_before}{arrows}{spaces_after} - {position:?}",
+				eq = string,
+				spaces_before = iter::repeat(' ').take(range.start.0).collect::<String>(),
+				arrows = iter::repeat('^').take(range.end.0 - range.start.0).collect::<String>(),
+				spaces_after = iter::repeat(' ').take(string.len() - range.end.0).collect::<String>(),
+				position = pos,
+			)
+		}
 	}
 }
-
-struct BindingGetter(...);
-impl BindingGetter {
-	fn get(name: String /* For function? */) -> Equation {
-		...
-	}
-}
-
-fn find_bindings(where: &Expression, by: &Expression) -> Option<BindingSetter> {
-	unimplemented!()
-}
-
-fn apply_bindings(to: &Formula, bindings: &BindingsGetter) -> Option<Equation> {
-	unimplemented!()
-}
-
-???
-fn find_equation(&mut Equation, position: Vec<usize>) -> Option<&mut Equation> {
-
-}
-
-fn apply_formula(Equation, FormulaTree, position) -> Option<Equation> {
-	
-}
-
-a/b/a <-> 1/b
-5/2/5 -> Some(a = 5, b = 2, a = 5) -> Some(1/b)
-5/2/3 -> Some(a = 5, b = 2, a = 3) -> None
-```
-
-*/
