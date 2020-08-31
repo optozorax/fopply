@@ -162,10 +162,6 @@ pub fn find_bindings(expr: Expression, by: Expression, binding_storage: &mut Bin
 		Pattern { name: from_name } => {
 			binding_storage.add(Binding::for_pattern(from_name, expr.clone()))
 		},
-		ConstrainedPattern { name: from_name, constrained_pattern_name } => {
-			let to_matched = constrained_pattern_check(expr, &constrained_pattern_name)?;
-			binding_storage.add(Binding::for_constrained_pattern(from_name, to_matched))
-		},
 		AnyFunction { name: from_any_function_name, args: args_from } => {
 			match expr.0 {
 				AnyFunction { name: to_any_function_name, args: args_to } 
@@ -223,9 +219,6 @@ pub fn apply_bindings(expr: Expression, binding_storage: &BindingStorage) -> Opt
 	match expr.0 {
 		Pattern { name } => {
 			Some(binding_storage.map_pattern.get(&name)?.clone())
-		},
-		ConstrainedPattern { name, constrained_pattern_name: _ } => {
-			Some(binding_storage.map_constrained_pattern.get(&name)?.clone())
 		},
 		AnyFunction { name, args } => {
 			// TODO объединить эти два

@@ -190,7 +190,6 @@ peg::parser!(
 			/ named_value()
 
 			/ function()
-			/ constrained_pattern()
 			/ pattern()
 
 			/ integer_value()
@@ -200,14 +199,6 @@ peg::parser!(
 				ExpressionParsing {
 					span: start..end,
 					node: ExpressionMeta::Pattern { name } 
-				}
-			}
-
-		rule constrained_pattern() -> ExpressionParsing
-			= start:position!() name:identifier() "#" constrained_pattern_name:identifier() end:position!() { 
-				ExpressionParsing {
-					span: start..end,
-					node: ExpressionMeta::ConstrainedPattern { name, constrained_pattern_name }
 				}
 			}
 
@@ -266,8 +257,6 @@ pub fn clear_parsing_info(expr: ExpressionParsing) -> Expression {
 				NamedFunction { name, args: args.into_iter().map(clear_parsing_info).collect() },
 			Pattern { name } => 
 				Pattern { name },
-			ConstrainedPattern { name, constrained_pattern_name } => 
-				ConstrainedPattern { name, constrained_pattern_name },
 			NamedValue { name } => 
 				NamedValue { name },
 			IntegerValue { value } => 
@@ -309,8 +298,6 @@ pub fn process_expression_parsing(expr: ExpressionParsing) -> (Expression, Vec<(
 					},
 				Pattern { name } => 
 					Pattern { name },
-				ConstrainedPattern { name, constrained_pattern_name } => 
-					ConstrainedPattern { name, constrained_pattern_name },
 				NamedValue { name } => 
 					NamedValue { name },
 				IntegerValue { value } => 

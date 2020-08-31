@@ -8,7 +8,7 @@ fn test() {
 	assert!(parser::expr("a+b+c").is_ok());
 	assert!(parser::expr("a+sin(b)").is_ok());
 	assert!(parser::expr("a+$f(b)").is_ok());
-	assert!(parser::expr("$true+$f(1)-a#n").is_ok());
+	assert!(parser::expr("$true+$f(1)-an").is_ok());
 
 	let expression = parser::expr("part(b = 0, a, a*part($true, 1, $undefined))").unwrap();
 	let expression = clear_parsing_info(expression);

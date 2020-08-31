@@ -6,15 +6,6 @@ pub enum ExpressionMeta<ArgType> {
 		name: String
 	},
 
-	/// `a#n` - матчится только с тем, что проходит внутреннюю проверку
-	ConstrainedPattern {
-		/// a
-		name: String,
-		/// n
-		// TODO сделать это enum'ом
-		constrained_pattern_name: String,
-	},
-
 	/// `$f(a, b)` - функция с неизвестным именем с любым числом аргументов
 	AnyFunction {
 		name: String,
@@ -72,7 +63,6 @@ fn get<'a, Expr: GetInnerExpression>(expr: &'a Expr, position: &[usize])
 				NamedFunction { name: _, args } => get(args.get(*start)?, tail),
 
 				Pattern { .. } |
-				ConstrainedPattern { .. } |
 				NamedValue { .. } |
 				IntegerValue { .. } => None,
 			}
