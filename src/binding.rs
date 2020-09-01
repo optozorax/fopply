@@ -1,4 +1,5 @@
 use crate::expr::*;
+use crate::utils::apply::*;
 use std::collections::BTreeMap;
 
 /// `left <-> right`
@@ -142,43 +143,31 @@ impl BindingStorage {
 	}
 }
 
-pub fn constrained_pattern_check(expr: Expression, name: &str) -> Option<Expression> {
-	use ExpressionMeta::*;
-
-	match &name[..] {
-		"n" => match expr.0 {
-			IntegerValue { value: _ } => Some(expr),
-			_ => None
-		},
-		_ => None,
-	}
-}
-
 // TODO сделать чтобы возвращалось в каких позициях не сматчилось, и чтобы это делалось параллельно, чтобы было много ошибок, и все их можно было визуализировать
-pub fn find_bindings(expr: Expression, by: Expression, binding_storage: &mut BindingStorage) -> Option<()> {
+pub fn find_bindings(expr: Expression, by: &Expression, binding_storage: &mut BindingStorage) -> Option<()> {
 	use ExpressionMeta::*;
 
-	match by.0 {
+	match &by.0 {
 		Pattern { name: from_name } => {
-			binding_storage.add(Binding::for_pattern(from_name, expr.clone()))
+			binding_storage.add(Binding::for_pattern(from_name.to_string(), expr))
 		},
 		AnyFunction { name: from_any_function_name, args: args_from } => {
 			match expr.0 {
 				AnyFunction { name: to_any_function_name, args: args_to } 
 					if args_from.len() == args_to.len()
 				=> {
-					binding_storage.add(Binding::for_any_function_to_any_function(from_any_function_name, to_any_function_name))?;
-					for (arg_to, arg_from) in args_to.into_iter().zip(args_from.into_iter()) {
-						find_bindings(arg_to, arg_from, binding_storage)?;
+					binding_storage.add(Binding::for_any_function_to_any_function(from_any_function_name.to_string(), to_any_function_name))?;
+					for (arg_to, arg_from) in args_to.into_iter().zip(args_from.iter()) {
+						find_bindings(arg_to, &arg_from, binding_storage)?;
 					}
 					Some(())
 				},
 				NamedFunction { name: name_expr, args: args_expr } 
 					if args_from.len() == args_expr.len()
 				=> {
-					binding_storage.add(Binding::for_any_function_to_named_function(from_any_function_name, name_expr))?;
-					for (arg_expr, arg_by) in args_expr.into_iter().zip(args_from.into_iter()) {
-						find_bindings(arg_expr, arg_by, binding_storage)?;
+					binding_storage.add(Binding::for_any_function_to_named_function(from_any_function_name.to_string(), name_expr))?;
+					for (arg_expr, arg_by) in args_expr.into_iter().zip(args_from.iter()) {
+						find_bindings(arg_expr, &arg_by, binding_storage)?;
 					}
 					Some(())
 				},
@@ -188,10 +177,10 @@ pub fn find_bindings(expr: Expression, by: Expression, binding_storage: &mut Bin
 		NamedFunction { name, args } => {
 			match expr.0 {
 				NamedFunction { name: name_expr, args: args_expr } 
-					if name == name_expr && args.len() == args_expr.len()
+					if *name == name_expr && args.len() == args_expr.len()
 				=> {
-					for (arg_expr, arg_by) in args_expr.into_iter().zip(args.into_iter()) {
-						find_bindings(arg_expr, arg_by, binding_storage)?;
+					for (arg_expr, arg_by) in args_expr.into_iter().zip(args.iter()) {
+						find_bindings(arg_expr, &arg_by, binding_storage)?;
 					}
 					Some(())
 				},
@@ -200,13 +189,13 @@ pub fn find_bindings(expr: Expression, by: Expression, binding_storage: &mut Bin
 		},
 		NamedValue { name } => {
 			match expr.0 {
-				NamedValue { name: expr_name } if name == expr_name => Some(()),
+				NamedValue { name: expr_name } if *name == expr_name => Some(()),
 				_ => None,
 			}
 		},
 		IntegerValue { value } => {
 			match expr.0 {
-				IntegerValue { value: expr_value } if value == expr_value => Some(()),
+				IntegerValue { value: expr_value } if *value == expr_value => Some(()),
 				_ => None,
 			}
 		},
@@ -216,27 +205,50 @@ pub fn find_bindings(expr: Expression, by: Expression, binding_storage: &mut Bin
 pub fn apply_bindings(expr: Expression, binding_storage: &BindingStorage) -> Option<Expression> {
 	use ExpressionMeta::*;
 
+	let apply_for_args = |args: Vec<Expression>| {
+		args
+			.into_iter()
+			.map(|arg| apply_bindings(arg, binding_storage))
+			.collect::<Option<Vec<_>>>()
+	};
+
 	match expr.0 {
 		Pattern { name } => {
-			Some(binding_storage.map_pattern.get(&name)?.clone())
+			binding_storage.map_pattern.get(&name)?.clone().apply(Some)
 		},
 		AnyFunction { name, args } => {
-			// TODO объединить эти два
 			if let Some(found) = binding_storage.map_any_function_to_any_function.get(&name) {
-				let args = args.into_iter().map(|arg| apply_bindings(arg, binding_storage)).collect::<Option<Vec<_>>>()?;
-				Some(Expression(AnyFunction { name: found.to_string(), args }))
+				AnyFunction { 
+					name: found.to_string(), 
+					args: apply_for_args(args)?
+				}
+				.apply(Expression)
+				.apply(Some)
 			} else if let Some(found) = binding_storage.map_any_function_to_named_function.get(&name) {
-				let args = args.into_iter().map(|arg| apply_bindings(arg, binding_storage)).collect::<Option<Vec<_>>>()?;
-				Some(Expression(NamedFunction { name: found.to_string(), args }))
+				NamedFunction { 
+					name: found.to_string(), 
+					args: apply_for_args(args)?
+				}
+				.apply(Expression)
+				.apply(Some)
 			} else {
-				None
+				AnyFunction { 
+					name, 
+					args: apply_for_args(args)?
+				}
+				.apply(Expression)
+				.apply(Some)
 			}
 		},
 		NamedFunction { name, args } => {
-			let args = args.into_iter().map(|arg| apply_bindings(arg, binding_storage)).collect::<Option<Vec<_>>>()?;
-			Some(Expression(NamedFunction { name, args }))
+			NamedFunction { 
+				name, 
+				args: apply_for_args(args)?
+			}
+			.apply(Expression)
+			.apply(Some)
 		},
-		NamedValue { name } => Some(Expression(NamedValue { name })),
-		IntegerValue { value } => Some(Expression(IntegerValue { value })),
+		NamedValue { name } => NamedValue { name }.apply(Expression).apply(Some),
+		IntegerValue { value } => IntegerValue { value }.apply(Expression).apply(Some),
 	}
 }

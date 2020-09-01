@@ -3,6 +3,7 @@ use std::ops::Range;
 use crate::expr::*;
 use crate::binding::*;
 use crate::utils::char_index::*;
+use crate::utils::apply::*;
 
 pub struct FormulaPosition {
 	pub module_name: String,
@@ -39,12 +40,6 @@ peg::parser!(
 
 		pub rule binding() -> Binding
 			= name:identifier() _ ":=" _ to:expr() { Binding::for_pattern(name, clear_parsing_info(to)) }
-			/ name:identifier() "#" constrained_pattern_name:identifier() _ ":=" _ to:expr() {? || -> Result<_, _> {
-				let to = clear_parsing_info(to);
-				let to_matched = constrained_pattern_check(to, &constrained_pattern_name)
-					.ok_or("This not fit to constrain")?;
-				Ok(Binding::for_constrained_pattern(name, to_matched))
-			}() }
 			// TODO add function binding, but it requires matching to many things
 
 		pub rule formula_position() -> FormulaPosition
@@ -265,21 +260,21 @@ pub fn clear_parsing_info(expr: ExpressionParsing) -> Expression {
 	)
 }
 
-pub fn process_expression_parsing(expr: ExpressionParsing) -> (Expression, Vec<(Vec<usize>, Range<usize>)>) {
+pub fn process_expression_parsing(expr: ExpressionParsing) -> (Expression, Vec<(ExprPositionOwned, Range<usize>)>) {
 	fn process(
 		expr: ExpressionMeta<ExpressionParsing>, 
-		current_position: &mut Vec<usize>, 
-		storage: &mut Vec<(Vec<usize>, Range<usize>)>
+		current_position: &mut ExprPositionOwned, 
+		storage: &mut Vec<(ExprPositionOwned, Range<usize>)>
 	) -> Expression {
 		use ExpressionMeta::*;
 
 		let mut process_args = |args: Vec<ExpressionParsing>| {
 			args.into_iter().enumerate().map(|(pos, arg)| {
-				current_position.push(pos);
+				current_position.0.push(pos);
 				let ExpressionParsing { span, node } = arg;
 				storage.push((current_position.clone(), span));
 				let result = process(node, current_position, storage);
-				current_position.pop().unwrap();
+				current_position.0.pop().unwrap();
 				result
 			}).collect()
 		};
@@ -307,7 +302,7 @@ pub fn process_expression_parsing(expr: ExpressionParsing) -> (Expression, Vec<(
 	}
 
 	let mut storage = Vec::new();
-	let mut current_position = Vec::new();
+	let mut current_position = Vec::new().apply(ExprPositionOwned);
 	let ExpressionParsing { span, node } = expr;
 	storage.push((current_position.clone(), span));
 	(process(node, &mut current_position, &mut storage), storage)
