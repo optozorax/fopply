@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use fopply::parsing::*;
 use fopply::binding::*;
 use fopply::utils::char_index::*;
@@ -10,14 +12,16 @@ fn test() {
 	assert!(parser::expr("a+$f(b)").is_ok());
 	assert!(parser::expr("$true+$f(1)-an").is_ok());
 
+	let mut any_function_bindings = ManualAnyFunctionBinding::new(BTreeMap::default());
+
 	let expression = parser::expr("part(b = 0, a, a*part($true, 1, $undefined))").unwrap();
 	let expression = clear_parsing_info(expression);
 	let formula = parser::formula("part(cond, then, else) <-> part(not(cond), else, then)").unwrap();
 
 	let mut bindings = BindingStorage::default();
 
-	find_bindings(expression, formula.left, &mut bindings).unwrap();
-	let result = apply_bindings(formula.right, &bindings).unwrap();
+	find_bindings(expression, &formula.left, &mut bindings, &mut any_function_bindings).unwrap();
+	let result = apply_bindings(formula.right, &bindings, &any_function_bindings);
 
 	let should_be = parser::expr("part(not(b = 0), a*part($true, 1, $undefined), a)").unwrap();
 	let should_be = clear_parsing_info(should_be);
@@ -31,14 +35,38 @@ fn test2() {
 	let expression = clear_parsing_info(expression);
 	let formula = parser::formula("part(x, a, a) <-> a").unwrap();
 
+	let mut any_function_bindings = ManualAnyFunctionBinding::new(BTreeMap::default());
+
 	let mut bindings = BindingStorage::default();
 
 	bindings.add(parser::binding("x := b = 0").unwrap());
 
-	find_bindings(expression, formula.right, &mut bindings).unwrap();
-	let result = apply_bindings(formula.left, &bindings).unwrap();
+	find_bindings(expression, &formula.right, &mut bindings, &mut any_function_bindings).unwrap();
+	let result = apply_bindings(formula.left, &bindings, &any_function_bindings);
 
 	let should_be = parser::expr("part(b = 0, a, a)").unwrap();
+	let should_be = clear_parsing_info(should_be);
+
+	assert_eq!(result, should_be);
+}
+
+#[test]
+fn test3() {
+	let expression = parser::expr("part(not(b = 0), a*part($true, 1, $undefined), a)").unwrap();
+	let expression = clear_parsing_info(expression);
+	let formula = parser::formula("part(cond, $f(part(cond2, then2, else2)), else) <-> part(cond, $f(part(cond2 & cond, then2, else2)), else)").unwrap();
+
+	let mut binding_map = BTreeMap::new();
+	let (key, value) = parser::function_binding("$f(x) := a*x").unwrap();
+	binding_map.insert(key, value);
+	let mut any_function_bindings = ManualAnyFunctionBinding::new(binding_map);
+
+	let mut bindings = BindingStorage::default();
+
+	find_bindings(expression, &formula.left, &mut bindings, &mut any_function_bindings).unwrap();
+	let result = apply_bindings(formula.right, &bindings, &any_function_bindings);
+
+	let should_be = parser::expr("part(not(b = 0), a*part($true & not(b = 0), 1, $undefined), a)").unwrap();
 	let should_be = clear_parsing_info(should_be);
 
 	assert_eq!(result, should_be);

@@ -1,9 +1,11 @@
 use std::borrow::Borrow;
+use crate::utils::apply::*;
 
 /// Обобщённое выражение. Обобщённость нужна для возможности как задать положения в парсинге, так и для возмоности задания обычного выражения. Была выбрана такая обобщённость вместо копипасты данной структуры отдельно для парсинга.
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum ExpressionMeta<Arg> {
 	/// В математике называется "переменной", но здесь это называется паттерном. Матчится с чем угодно, именованная часть выражения. В выражении выглядит как: `a`, `b`, `c`.
+	// TODO переименовать в Any
 	Pattern {
 		name: String
 	},
@@ -104,35 +106,7 @@ impl Borrow<ExprPosition> for ExprPositionOwned {
 pub struct PositionError(usize);
 
 impl<Arg: GetInnerExpression> ExpressionMeta<Arg> {
-	fn get_inner(self, position: &ExprPosition, deep: usize) -> Result<Self, PositionError> {
-		use ExpressionMeta::*;
-
-		match &position.0 {
-			[start, tail @ ..] => {
-				match self {
-					AnyFunction { name: _, args } |
-					NamedFunction { name: _, args } => args
-						.into_iter()
-						.nth(*start)
-						.ok_or(PositionError(deep))?
-						.get_inner_expression()
-						.get_inner(ExprPosition::from_slice(tail), deep+1),
-
-					Pattern { .. } |
-					NamedValue { .. } |
-					IntegerValue { .. } => Err(PositionError(deep)),
-				}
-			},
-			[] => Ok(self),
-		}
-	}
-
-	/// Получить владение на внутреннюю часть выражения.
-	pub fn get(self, position: &ExprPosition) -> Result<Self, PositionError> {
-		self.get_inner(position, 0)
-	}
-
-	fn get_ref_inner<'a>(&'a self, position: &ExprPosition, deep: usize) -> Result<&'a Self, PositionError> {
+	fn get_inner<'a>(&'a self, position: &ExprPosition, deep: usize) -> Result<&'a Self, PositionError> {
 		use ExpressionMeta::*;
 
 		match &position.0 {
@@ -143,7 +117,7 @@ impl<Arg: GetInnerExpression> ExpressionMeta<Arg> {
 						.get(*start)
 						.ok_or(PositionError(deep))?
 						.get_inner_expression_ref()
-						.get_ref_inner(ExprPosition::from_slice(tail), deep+1),
+						.get_inner(ExprPosition::from_slice(tail), deep+1),
 
 					Pattern { .. } |
 					NamedValue { .. } |
@@ -152,11 +126,6 @@ impl<Arg: GetInnerExpression> ExpressionMeta<Arg> {
 			},
 			[] => Ok(self),
 		}
-	}
-
-	/// Получить ссылку на внутреннюю часть выражения. 
-	pub fn get_ref<'a>(&'a self, position: &ExprPosition) -> Result<&'a Self, PositionError> {
-		self.get_ref_inner(position, 0)
 	}
 
 	fn get_mut_inner<'a>(&'a mut self, position: &ExprPosition, deep: usize) -> Result<&'a mut Self, PositionError> {
@@ -181,8 +150,62 @@ impl<Arg: GetInnerExpression> ExpressionMeta<Arg> {
 		}
 	}
 
+	fn travel_positions_inner<F: FnMut(&Self, &ExprPosition)>(&self, current_position: &mut ExprPositionOwned, f: &mut F) {
+		use ExpressionMeta::*;
+
+		f(self, (&*current_position).borrow());
+
+		let mut process_args = |args: &[Arg]| {
+			args.iter().enumerate().for_each(|(pos, arg)| {
+				current_position.0.push(pos);
+				arg.get_inner_expression_ref().travel_positions_inner(current_position, f);
+				current_position.0.pop().unwrap();
+			})
+		};
+
+		match self {
+			AnyFunction { name: _, args } |
+			NamedFunction { name: _, args } => process_args(&*args),
+
+			Pattern { name: _ } |
+			NamedValue { name: _ } |
+			IntegerValue { value: _ } => (),
+		}
+	}
+}
+
+impl<Arg: GetInnerExpression> ExpressionMeta<Arg> {
+	/// Получить ссылку на внутреннюю часть выражения. 
+	pub fn get<'a>(&'a self, position: &ExprPosition) -> Result<&'a Self, PositionError> {
+		self.get_inner(position, 0)
+	}
+
 	/// Получить изменяемую ссылку на внутреннюю часть выражения.
 	pub fn get_mut<'a>(&'a mut self, position: &ExprPosition) -> Result<&'a mut Self, PositionError> {
 		self.get_mut_inner(position, 0)
+	}
+
+	/// Обход всего выражения с передачей позиции.
+	pub fn travel<F: FnMut(&Self)>(&self, f: &mut F) {
+		use ExpressionMeta::*;
+
+		f(self);
+
+		match self {
+			AnyFunction { name: _, args } |
+			NamedFunction { name: _, args } => args.iter().for_each(|arg| {
+				arg.get_inner_expression_ref().travel(f);
+			}),
+
+			Pattern { name: _ } |
+			NamedValue { name: _ } |
+			IntegerValue { value: _ } => (),
+		}
+	}
+
+	/// Обход всего выражения с передачей позиции.
+	pub fn travel_positions<F: FnMut(&Self, &ExprPosition)>(&self, mut f: F) {
+		let mut current_position = Vec::new().apply(ExprPositionOwned);
+		self.travel_positions_inner(&mut current_position, &mut f);
 	}
 }

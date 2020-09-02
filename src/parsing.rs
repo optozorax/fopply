@@ -38,8 +38,17 @@ peg::parser!(
 				}
 			}
 
+		pub rule function_binding() -> (String, AnyFunctionPattern)
+			= "$" name:identifier() "(" _ variables:identifier() ** (_ "," _ ) _ ")" _ ":=" _ pattern:expr() {
+				AnyFunctionPattern {
+					pattern: clear_parsing_info(pattern),
+					variables,
+				}
+				.apply(|x| (name, x))
+			}
+
 		pub rule binding() -> Binding
-			= name:identifier() _ ":=" _ to:expr() { Binding::for_pattern(name, clear_parsing_info(to)) }
+			= name:identifier() _ ":=" _ to:expr() { Binding::new(name, clear_parsing_info(to)) }
 			// TODO add function binding, but it requires matching to many things
 
 		pub rule formula_position() -> FormulaPosition
