@@ -174,6 +174,7 @@ impl<Arg: GetInnerExpression> ExpressionMeta<Arg> {
 	}
 }
 
+// TODO сделать все эти методы для Arg, а то не очень получается без информации о позиции в парсинге
 impl<Arg: GetInnerExpression> ExpressionMeta<Arg> {
 	/// Получить ссылку на внутреннюю часть выражения. 
 	pub fn get<'a>(&'a self, position: &ExprPosition) -> Result<&'a Self, PositionError> {

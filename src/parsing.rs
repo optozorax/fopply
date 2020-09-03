@@ -1,7 +1,7 @@
 use std::ops::Range;
 
 use crate::expr::*;
-use crate::binding::*;
+use crate::binding::{Binding, AnyFunctionPattern};
 use crate::utils::char_index::*;
 use crate::utils::apply::*;
 
@@ -23,18 +23,87 @@ impl GetInnerExpression for ExpressionParsing {
 	fn get_inner_expression_mut(&mut self) -> &mut ExpressionMeta<Self> { &mut self.node }
 }
 
-// TODO должно возвращать позицию, чтобы потом по ^^^ можно было искать то что надо
+pub struct Formula {
+	pub left: ExpressionParsing,
+	pub right: ExpressionParsing,
+}
+
+pub struct ProofStep {
+	expr: ExpressionParsing,
+	position: Range<CharIndex>,
+	used_formula: FormulaPosition,
+	bindings: Vec<Binding>,
+	function_bindings: Vec<(String, AnyFunctionPattern)>,
+}
+
+pub struct Proof {
+	steps: Vec<ProofStep>,
+}
+
+pub struct FullFormula {
+	position: u64,
+	formula: Formula,
+	proof: Option<Proof>,
+}
+
+pub struct NamedFormulas {
+	name: String,
+	formulas: Vec<FullFormula>,
+}
+
+pub struct Math(Vec<NamedFormulas>);
+
 // TODO переделать на собственный алгоритм precedence!(), равенства должны парситься обычно со стороны парсера, это уже потом проверка типов должна говорить что типы не совпали
 peg::parser!(
 	pub grammar parser() for str {
-		pub rule formulas() -> Vec<Formula> 
-			= r:(t:formula() _ ";" _ {t})+ { r }
+		pub rule math() -> Math
+			= _ named_formulas:(named_formulas:named_formulas() _ { named_formulas })+ {
+				Math(named_formulas)
+			}
+
+		pub rule named_formulas() -> NamedFormulas 
+			= "[" name:identifier() "]" _ formulas:(formulas:full_formula() _ { formulas })+ {
+				NamedFormulas {
+					name,
+					formulas,
+				}
+			}
+
+		pub rule full_formula() -> FullFormula
+			= position:integer() "." _ formula:formula() _ proof:proof()? _ ";" {
+				FullFormula {
+					position,
+					formula,
+					proof,
+				}
+			}
+
+		pub rule proof() -> Proof
+			= "{" _ steps:(steps:proof_step() _ { steps })+ _ "}" {
+				Proof {
+					steps,
+				}
+			}
+
+		pub rule proof_step() -> ProofStep
+			= expr:expr() _ ";" _ 
+			  position:visual_positon() _ used_formula:formula_position() _ 
+			  bindings:binding() ** (_ "," _ ) _ 
+			  function_bindings:function_binding() ** (_ "," _ ) _ ";" {
+				ProofStep {
+					expr,
+					position,
+					used_formula,
+					bindings,
+					function_bindings,
+				}
+			}
 
 		pub rule formula() -> Formula
 			= left:expr() _ "<->" _ right:expr() {
 				Formula { 
-					left: clear_parsing_info(left), 
-					right: clear_parsing_info(right) 
+					left, 
+					right 
 				}
 			}
 
@@ -100,7 +169,7 @@ peg::parser!(
 		rule equality() -> ExpressionParsing
 			= start:position!() 
 			  l:sum() 
-			  r:(_ z:$("="/"!="/">"/"<"/">="/"<=") _ p:sum() { (z, p) })? 
+			  r:(_ z:$("="/"!="/">="/"<="/">"/"<") _ p:sum() { (z, p) })? 
 			  end:position!() 
 			{
 				match r {
@@ -246,7 +315,7 @@ peg::parser!(
 				String::from(n)
 			}
 
-		rule _() = quiet!{[' ' | '\n' | '\t']*}
+		rule _() = quiet!{[' ' | '\n' | '\r' | '\t']*}
 	}
 );
 

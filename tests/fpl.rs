@@ -20,8 +20,8 @@ fn test() {
 
 	let mut bindings = BindingStorage::default();
 
-	find_bindings(expression, &formula.left, &mut bindings, &mut any_function_bindings).unwrap();
-	let result = apply_bindings(formula.right, &bindings, &any_function_bindings);
+	find_bindings(expression, &clear_parsing_info(formula.left), &mut bindings, &mut any_function_bindings).unwrap();
+	let result = apply_bindings(clear_parsing_info(formula.right), &bindings, &any_function_bindings);
 
 	let should_be = parser::expr("part(not(b = 0), a*part($true, 1, $undefined), a)").unwrap();
 	let should_be = clear_parsing_info(should_be);
@@ -41,8 +41,8 @@ fn test2() {
 
 	bindings.add(parser::binding("x := b = 0").unwrap());
 
-	find_bindings(expression, &formula.right, &mut bindings, &mut any_function_bindings).unwrap();
-	let result = apply_bindings(formula.left, &bindings, &any_function_bindings);
+	find_bindings(expression, &clear_parsing_info(formula.right), &mut bindings, &mut any_function_bindings).unwrap();
+	let result = apply_bindings(clear_parsing_info(formula.left), &bindings, &any_function_bindings);
 
 	let should_be = parser::expr("part(b = 0, a, a)").unwrap();
 	let should_be = clear_parsing_info(should_be);
@@ -63,8 +63,8 @@ fn test3() {
 
 	let mut bindings = BindingStorage::default();
 
-	find_bindings(expression, &formula.left, &mut bindings, &mut any_function_bindings).unwrap();
-	let result = apply_bindings(formula.right, &bindings, &any_function_bindings);
+	find_bindings(expression, &clear_parsing_info(formula.left), &mut bindings, &mut any_function_bindings).unwrap();
+	let result = apply_bindings(clear_parsing_info(formula.right), &bindings, &any_function_bindings);
 
 	let should_be = parser::expr("part(not(b = 0), a*part($true & not(b = 0), 1, $undefined), a)").unwrap();
 	let should_be = clear_parsing_info(should_be);
@@ -140,4 +140,10 @@ fn parsing_info() {
 			position = pos,
 		)
 	}
+}
+
+#[test]
+fn read_math_fpl() {
+	let file = std::fs::read_to_string("fpl/math.fpl").unwrap();
+	let parsed = parser::math(&file).unwrap();
 }

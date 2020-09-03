@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 /// Одна часть в формуле `formula_part <-> ...`.
 #[derive(Clone, Debug)]
-struct FormulaPart {
+pub struct FormulaPart {
 	pattern: Expression,
 	unknown_patterns_names: Vec<String>,
 	anyfunction_names: Vec<String>,
@@ -13,8 +13,8 @@ struct FormulaPart {
 /// `left <-> right`
 #[derive(Clone, Debug)]
 pub struct Formula {
-	pub left: Expression, // TODO formulapart
-	pub right: Expression,
+	pub left: FormulaPart, // TODO formulapart
+	pub right: FormulaPart,
 }
 
 /// `variable -> value`, позволяет производить замену с имени паттерна на выражение
