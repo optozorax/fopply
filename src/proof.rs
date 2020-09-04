@@ -42,7 +42,7 @@ pub fn read_math(math: &Math) -> Option<BTreeMap<FormulaPosition, Formula>> {
 
 pub fn proofs_has_cycles(math: &Math) -> bool {
 	let mut id_generator = IdGenerator::default();
-	let mut graph = Graph::<(), ()>::new();
+	let mut edges = vec![];
 	for NamedFormulas { name, formulas } in &math.0 {
 		for (index, formula) in formulas.iter().enumerate() {
 			let current_position = NodeIndex::new(id_generator.get_or_add_id(FormulaPosition {
@@ -55,12 +55,13 @@ pub fn proofs_has_cycles(math: &Math) -> bool {
 						module_name: used_formula.module_name.clone(),
 						position: used_formula.position,
 					}) as usize);
-					graph.add_edge(current_position, used_position, ());
+					edges.push((current_position, used_position));
 				}
 			}
 		}
 	}
 
+	let graph = Graph::<(), ()>::from_edges(&edges);
 	petgraph::algo::is_cyclic_directed(&graph)
 }
 
