@@ -186,6 +186,7 @@ pub trait ExpressionExtension: GetInnerExpression {
 	fn get<'a>(&'a self, position: &ExprPosition) -> Result<&'a Self, PositionError>;
 	fn get_mut<'a>(&'a mut self, position: &ExprPosition) -> Result<&'a mut Self, PositionError>;
 	fn travel<F: FnMut(&Self)>(&self, f: &mut F);
+	fn travel_mut<'a, F: for<'b> FnMut(&'b mut Self)>(&'a mut self, f: &mut F);
 	fn travel_positions<F: FnMut(&Self, &ExprPosition)>(&self, f: F);
 	fn get_pattern_names(&self) -> BTreeSet<String>;
 	fn get_anyfunction_names(&self) -> BTreeSet<(String, usize)>;
@@ -214,6 +215,24 @@ impl<Arg> ExpressionExtension for Arg where
 			AnyFunction { name: _, args } |
 			NamedFunction { name: _, args } => args.iter().for_each(|arg| {
 				arg.travel(f);
+			}),
+
+			Pattern { name: _ } |
+			NamedValue { name: _ } |
+			IntegerValue { value: _ } => (),
+		}
+	}
+
+	/// Обход всего выражения с передачей позиции и изменением выражения.
+	fn travel_mut<'a, F: for<'b> FnMut(&'b mut Self)>(&'a mut self, f: &mut F) {
+		use ExpressionMeta::*;
+
+		f(self);
+
+		match self.get_inner_expression_mut() {
+			AnyFunction { name: _, args } |
+			NamedFunction { name: _, args } => args.iter_mut().for_each(|arg| {
+				arg.travel_mut(f);
 			}),
 
 			Pattern { name: _ } |

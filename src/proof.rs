@@ -64,7 +64,7 @@ pub fn proofs_has_cycles(math: &Math) -> bool {
 	petgraph::algo::is_cyclic_directed(&graph)
 }
 
-pub fn is_proofs_correct(math: &Math, global_formulas: &BTreeMap<FormulaPosition, Formula>) -> Result<(), ()> {
+pub fn is_proofs_correct(math: &Math, global_formulas: &BTreeMap<FormulaPosition, Formula>) -> Result<(), &'static str> {
 	for NamedFormulas { name: _, formulas } in &math.0 {
 		for formula in formulas {
 			if let Some(proof) = &formula.proof {
@@ -74,12 +74,12 @@ pub fn is_proofs_correct(math: &Math, global_formulas: &BTreeMap<FormulaPosition
 					let (mut expr, position) = {
 						let (expr, positions) = process_expression_parsing(expr.clone());
 						let position = positions.iter()
-							.find(|(_, range)| get_char_range(&string, range.clone()) == Some(position.clone())).ok_or(())?.0.clone();
+							.find(|(_, range)| get_char_range(&string, range.clone()) == Some(position.clone())).ok_or("position not found")?.0.clone();
 						(expr, position)
 					};
 
 					if expr != current {
-						return Err(());
+						return Err("proof step wrong");
 					}
 
 					let formula = {
@@ -87,7 +87,7 @@ pub fn is_proofs_correct(math: &Math, global_formulas: &BTreeMap<FormulaPosition
 							module_name: used_formula.module_name.clone(),
 							position: used_formula.position,
 						};
-						let mut result = global_formulas.get(&formula_position).ok_or(())?.clone();
+						let mut result = global_formulas.get(&formula_position).ok_or("formula not found")?.clone();
 						if !used_formula.left_to_right {
 							std::mem::swap(&mut result.left, &mut result.right);
 						}
@@ -95,20 +95,20 @@ pub fn is_proofs_correct(math: &Math, global_formulas: &BTreeMap<FormulaPosition
 						let sorted_unknown_names: BTreeSet<String> = result.left.unknown_patterns_names.iter().cloned().collect();
 						let sorted_used_names: BTreeSet<String> = bindings.iter().map(|b| b.pattern_name.clone()).collect();
 						if sorted_unknown_names != sorted_used_names {
-							return Err(());
+							return Err("not all bindings provided");
 						}
 
 						let sorted_unknown_anyfunctions: BTreeSet<(String, usize)> = result.left.anyfunction_names.iter().cloned().collect();
 						let sorted_function_bindings: BTreeSet<(String, usize)> = function_bindings.iter().map(|(name, pattern)| (name.clone(), pattern.variables.len())).collect();
 						if sorted_unknown_anyfunctions != sorted_function_bindings {
-							return Err(());
+							return Err("not all function bindings provided");
 						}
 
 						result
 					};					
 
 					let mut current_expr_part = Expression(ExpressionMeta::IntegerValue { value: 0 });
-					let current_expr = expr.get_mut(position.borrow()).map_err(|_| ())?;
+					let current_expr = expr.get_mut(position.borrow()).map_err(|_| "position not found in expression")?;
 					std::mem::swap(&mut current_expr_part, current_expr);
 
 					let mut bindings = {
@@ -133,7 +133,7 @@ pub fn is_proofs_correct(math: &Math, global_formulas: &BTreeMap<FormulaPosition
 						&formula.left.pattern,
 						&mut bindings,
 						&mut any_function_bindings
-					).ok_or(())?;
+					).ok_or("cannot find bindings")?;
 					let mut current_expr_part = apply_bindings(
 						formula.right.pattern.clone(),
 						&bindings,

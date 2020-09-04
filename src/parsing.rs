@@ -87,7 +87,7 @@ peg::parser!(
 			}
 
 		pub rule proof_step() -> ProofStep
-			= expr:&expr() string:$(expr()) _ ";" _ 
+			= expr:&expr_normalized() string:$(expr_normalized()) _ ";" _ 
 			  position:visual_positon() _ used_formula:formula_position() _ 
 			  bindings:binding() ** (_ "," _ ) _ 
 			  function_bindings:function_binding() ** (_ "," _ ) _ ";" {
@@ -102,7 +102,7 @@ peg::parser!(
 			}
 
 		pub rule formula() -> Formula
-			= left:expr() _ "<->" _ right:expr() {
+			= left:expr_normalized() _ "<->" _ right:expr_normalized() {
 				Formula { 
 					left, 
 					right 
@@ -110,7 +110,7 @@ peg::parser!(
 			}
 
 		pub rule function_binding() -> (String, AnyFunctionPattern)
-			= "$" name:identifier() "(" _ variables:identifier() ** (_ "," _ ) _ ")" _ ":=" _ pattern:expr() {
+			= "$" name:identifier() "(" _ variables:identifier() ** (_ "," _ ) _ ")" _ ":=" _ pattern:expr_normalized() {
 				AnyFunctionPattern {
 					pattern: clear_parsing_info(pattern),
 					variables,
@@ -119,7 +119,7 @@ peg::parser!(
 			}
 
 		pub rule binding() -> Binding
-			= name:identifier() _ ":=" _ to:expr() { Binding::new(name, clear_parsing_info(to)) }
+			= name:identifier() _ ":=" _ to:expr_normalized() { Binding::new(name, clear_parsing_info(to)) }
 			// TODO add function binding, but it requires matching to many things
 
 		pub rule formula_position() -> FormulaPosition
@@ -134,6 +134,13 @@ peg::parser!(
 		pub rule visual_positon() -> Range<CharIndex>
 			= before:$("." " "*) position:$("^"+) { CharIndex(before.len())..CharIndex(before.len() + position.len()) }
 			/ position:$("^"+) { CharIndex(0)..CharIndex(position.len()) }
+
+		pub rule expr_normalized() -> ExpressionParsing
+			= expr_start:position!() result:expr() {
+				let mut expr_result = result;
+				substract_position(expr_start, &mut expr_result);
+				expr_result
+			}
 
 		pub rule expr() -> ExpressionParsing
 			= or()
@@ -320,6 +327,13 @@ peg::parser!(
 		rule _() = quiet!{[' ' | '\n' | '\r' | '\t']*}
 	}
 );
+
+pub fn substract_position(to_substract: usize, expr: &mut ExpressionParsing) {
+	expr.travel_mut(&mut |expr| {
+		expr.span.start -= to_substract;
+		expr.span.end -= to_substract;
+	});
+}
 
 pub fn clear_parsing_info(expr: ExpressionParsing) -> Expression {
 	use ExpressionMeta::*;

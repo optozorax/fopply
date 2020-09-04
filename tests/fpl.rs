@@ -97,7 +97,7 @@ fn priority() {
 	same!("a^b*c^d", "(a^b)*(c^d)");
 }
 
-#[test]
+// #[test]
 fn parsing_info() {
 	macro_rules! debug_unwrap {
 		($name:ident( $($arg:expr),* )) => {{
@@ -118,8 +118,8 @@ fn parsing_info() {
 		}};
 	}
 
-	//let string = "part(b =      0, a, a *part($true, 1, $undefined))";
-	let string = "a+b+c+d^f*e";
+	let string = "part(b =      0, a, a *part($true, 1, $undefined))";
+	// let string = "a+b+c+d^f*e";
 	let parsed = parser::expr(string).unwrap();
 	let (_, positions) = process_expression_parsing(parsed);
 	let positions: Vec<_> = positions
