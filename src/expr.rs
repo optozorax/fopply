@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::borrow::Borrow;
 use crate::utils::apply::*;
 
@@ -105,18 +106,19 @@ impl Borrow<ExprPosition> for ExprPositionOwned {
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Copy)]
 pub struct PositionError(usize);
 
-impl<Arg: GetInnerExpression> ExpressionMeta<Arg> {
+impl<Arg> ExpressionExtensionInner for Arg where
+	Arg: GetInnerExpression,
+{
 	fn get_inner<'a>(&'a self, position: &ExprPosition, deep: usize) -> Result<&'a Self, PositionError> {
 		use ExpressionMeta::*;
 
 		match &position.0 {
 			[start, tail @ ..] => {
-				match self {
+				match self.get_inner_expression_ref() {
 					AnyFunction { name: _, args } |
 					NamedFunction { name: _, args } => args
 						.get(*start)
 						.ok_or(PositionError(deep))?
-						.get_inner_expression_ref()
 						.get_inner(ExprPosition::from_slice(tail), deep+1),
 
 					Pattern { .. } |
@@ -133,12 +135,11 @@ impl<Arg: GetInnerExpression> ExpressionMeta<Arg> {
 
 		match &position.0 {
 			[start, tail @ ..] => {
-				match self {
+				match self.get_inner_expression_mut() {
 					AnyFunction { name: _, args } |
 					NamedFunction { name: _, args } => args
 						.get_mut(*start)
 						.ok_or(PositionError(deep))?
-						.get_inner_expression_mut()
 						.get_mut_inner(ExprPosition::from_slice(tail), deep+1),
 
 					Pattern { .. } |
@@ -158,12 +159,12 @@ impl<Arg: GetInnerExpression> ExpressionMeta<Arg> {
 		let mut process_args = |args: &[Arg]| {
 			args.iter().enumerate().for_each(|(pos, arg)| {
 				current_position.0.push(pos);
-				arg.get_inner_expression_ref().travel_positions_inner(current_position, f);
+				arg.travel_positions_inner(current_position, f);
 				current_position.0.pop().unwrap();
 			})
 		};
 
-		match self {
+		match self.get_inner_expression_ref() {
 			AnyFunction { name: _, args } |
 			NamedFunction { name: _, args } => process_args(&*args),
 
@@ -174,28 +175,45 @@ impl<Arg: GetInnerExpression> ExpressionMeta<Arg> {
 	}
 }
 
-// TODO сделать все эти методы для Arg, а то не очень получается без информации о позиции в парсинге
-impl<Arg: GetInnerExpression> ExpressionMeta<Arg> {
+/// Внутренние методы для `ExpressionExtension`. Пользоваться этими методами не нужно. Я делаю его публичным только потому что компилятор ругается, вообще эти методы надо как-то сделать приватными. TODO.
+pub trait ExpressionExtensionInner: GetInnerExpression {
+	fn get_inner<'a>(&'a self, position: &ExprPosition, deep: usize) -> Result<&'a Self, PositionError>;
+	fn get_mut_inner<'a>(&'a mut self, position: &ExprPosition, deep: usize) -> Result<&'a mut Self, PositionError>;
+	fn travel_positions_inner<F: FnMut(&Self, &ExprPosition)>(&self, current_position: &mut ExprPositionOwned, f: &mut F);
+}
+
+pub trait ExpressionExtension: GetInnerExpression {
+	fn get<'a>(&'a self, position: &ExprPosition) -> Result<&'a Self, PositionError>;
+	fn get_mut<'a>(&'a mut self, position: &ExprPosition) -> Result<&'a mut Self, PositionError>;
+	fn travel<F: FnMut(&Self)>(&self, f: &mut F);
+	fn travel_positions<F: FnMut(&Self, &ExprPosition)>(&self, f: F);
+	fn get_pattern_names(&self) -> BTreeSet<String>;
+	fn get_anyfunction_names(&self) -> BTreeSet<(String, usize)>;
+}
+
+impl<Arg> ExpressionExtension for Arg where
+	Arg: GetInnerExpression + ExpressionExtensionInner,
+{
 	/// Получить ссылку на внутреннюю часть выражения. 
-	pub fn get<'a>(&'a self, position: &ExprPosition) -> Result<&'a Self, PositionError> {
+	fn get<'a>(&'a self, position: &ExprPosition) -> Result<&'a Self, PositionError> {
 		self.get_inner(position, 0)
 	}
 
 	/// Получить изменяемую ссылку на внутреннюю часть выражения.
-	pub fn get_mut<'a>(&'a mut self, position: &ExprPosition) -> Result<&'a mut Self, PositionError> {
+	fn get_mut<'a>(&'a mut self, position: &ExprPosition) -> Result<&'a mut Self, PositionError> {
 		self.get_mut_inner(position, 0)
 	}
 
 	/// Обход всего выражения с передачей позиции.
-	pub fn travel<F: FnMut(&Self)>(&self, f: &mut F) {
+	fn travel<F: FnMut(&Self)>(&self, f: &mut F) {
 		use ExpressionMeta::*;
 
 		f(self);
 
-		match self {
+		match self.get_inner_expression_ref() {
 			AnyFunction { name: _, args } |
 			NamedFunction { name: _, args } => args.iter().for_each(|arg| {
-				arg.get_inner_expression_ref().travel(f);
+				arg.travel(f);
 			}),
 
 			Pattern { name: _ } |
@@ -205,8 +223,30 @@ impl<Arg: GetInnerExpression> ExpressionMeta<Arg> {
 	}
 
 	/// Обход всего выражения с передачей позиции.
-	pub fn travel_positions<F: FnMut(&Self, &ExprPosition)>(&self, mut f: F) {
+	fn travel_positions<F: FnMut(&Self, &ExprPosition)>(&self, mut f: F) {
 		let mut current_position = Vec::new().apply(ExprPositionOwned);
 		self.travel_positions_inner(&mut current_position, &mut f);
+	}
+
+	/// Возвращает имена всех паттернов в выражении.
+	fn get_pattern_names(&self) -> BTreeSet<String> {
+		let mut result = BTreeSet::new();
+		self.travel(&mut |expr| {
+			if let ExpressionMeta::Pattern { name } = expr.get_inner_expression_ref() {
+				result.insert(name.clone());
+			}
+		});
+		result
+	}
+
+	/// Возвращает имена и количество аргументов всех anyfunction в выражении. Если в выражении имеется `$f` от двух аргументов и от трёх, то возвратятся оба.
+	fn get_anyfunction_names(&self) -> BTreeSet<(String, usize)> {
+		let mut result = BTreeSet::new();
+		self.travel(&mut |expr| {
+			if let ExpressionMeta::AnyFunction { name, args } = expr.get_inner_expression_ref() {
+				result.insert((name.clone(), args.len()));
+			}
+		});
+		result
 	}
 }

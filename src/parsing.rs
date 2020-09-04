@@ -29,31 +29,32 @@ pub struct Formula {
 }
 
 pub struct ProofStep {
-	expr: ExpressionParsing,
-	position: Range<CharIndex>,
-	used_formula: FormulaPosition,
-	bindings: Vec<Binding>,
-	function_bindings: Vec<(String, AnyFunctionPattern)>,
+	pub string: String,
+	pub expr: ExpressionParsing,
+	pub position: Range<CharIndex>,
+	pub used_formula: FormulaPosition,
+	pub bindings: Vec<Binding>,
+	pub function_bindings: Vec<(String, AnyFunctionPattern)>,
 }
 
 pub struct Proof {
-	steps: Vec<ProofStep>,
+	pub steps: Vec<ProofStep>,
 }
 
 pub struct FullFormula {
-	position: u64,
-	formula: Formula,
-	proof: Option<Proof>,
+	pub position: u64,
+	pub formula: Formula,
+	pub proof: Option<Proof>,
 }
 
 pub struct NamedFormulas {
-	name: String,
-	formulas: Vec<FullFormula>,
+	pub name: String,
+	pub formulas: Vec<FullFormula>,
 }
 
-pub struct Math(Vec<NamedFormulas>);
+pub struct Math(pub Vec<NamedFormulas>);
 
-// TODO переделать на собственный алгоритм precedence!(), равенства должны парситься обычно со стороны парсера, это уже потом проверка типов должна говорить что типы не совпали
+// TODO переделать на собственный алгоритм precedence!(), убрать костыль для парсинга неравенств и равенств
 peg::parser!(
 	pub grammar parser() for str {
 		pub rule math() -> Math
@@ -86,11 +87,12 @@ peg::parser!(
 			}
 
 		pub rule proof_step() -> ProofStep
-			= expr:expr() _ ";" _ 
+			= expr:&expr() string:$(expr()) _ ";" _ 
 			  position:visual_positon() _ used_formula:formula_position() _ 
 			  bindings:binding() ** (_ "," _ ) _ 
 			  function_bindings:function_binding() ** (_ "," _ ) _ ";" {
 				ProofStep {
+					string: string.to_string(),
 					expr,
 					position,
 					used_formula,

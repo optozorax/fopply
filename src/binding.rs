@@ -5,23 +5,77 @@ use std::collections::BTreeMap;
 /// Одна часть в формуле `formula_part <-> ...`.
 #[derive(Clone, Debug)]
 pub struct FormulaPart {
-	pattern: Expression,
-	unknown_patterns_names: Vec<String>,
-	anyfunction_names: Vec<String>,
+	pub pattern: Expression,
+	pub unknown_patterns_names: Vec<String>,
+	pub anyfunction_names: Vec<(String, usize)>,
+}
+
+impl Formula {
+	pub fn new(left: Expression, right: Expression) -> Option<Formula> {
+		let left_patterns = left.get_pattern_names();
+		let right_patterns = right.get_pattern_names();
+
+		let left_unknown_patterns: Vec<String> = right_patterns.difference(&left_patterns).cloned().collect();
+		let right_unknown_patterns: Vec<_> = left_patterns.difference(&right_patterns).cloned().collect();
+
+		let left_anyfunctions = left.get_anyfunction_names();
+		let right_anyfunctions = right.get_anyfunction_names();
+
+		let check_functions_equal_arguments = |functions| -> Option<_> {
+			let mut arg_count = BTreeMap::new();
+			for (name, count) in functions {
+				use std::collections::btree_map::Entry::*;
+
+				match arg_count.entry(name) {
+					Vacant(vacant) => { vacant.insert(count); },
+					Occupied(occupied) => {
+						if *occupied.get() != count {
+							return None
+						}
+					}
+				}
+			}
+			Some(arg_count)
+		};
+
+		// Проверяем, что везде совпадает число аргументов
+		let left_anyfunctions = check_functions_equal_arguments(left_anyfunctions)?;
+		let right_anyfunctions = check_functions_equal_arguments(right_anyfunctions)?;
+
+		// Проверяем с обоих сторон одинаковые имена
+		if left_anyfunctions != right_anyfunctions {
+			return None;
+		}
+
+		Some(
+			Formula {
+				left: FormulaPart {
+					pattern: left,
+					unknown_patterns_names: left_unknown_patterns,
+					anyfunction_names: left_anyfunctions.into_iter().collect(),
+				},
+				right: FormulaPart {
+					pattern: right,
+					unknown_patterns_names: right_unknown_patterns,
+					anyfunction_names: right_anyfunctions.into_iter().collect(),
+				}
+			}
+		)
+	}
 }
 
 /// `left <-> right`
 #[derive(Clone, Debug)]
 pub struct Formula {
-	pub left: FormulaPart, // TODO formulapart
+	pub left: FormulaPart,
 	pub right: FormulaPart,
 }
 
 /// `variable -> value`, позволяет производить замену с имени паттерна на выражение
 #[derive(Clone, Debug)]
 pub struct Binding {
-	pattern_name: String,
-	to_value: Expression,
+	pub pattern_name: String,
+	pub to_value: Expression,
 }
 
 impl Binding {

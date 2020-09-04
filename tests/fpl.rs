@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use fopply::parsing::*;
 use fopply::binding::*;
 use fopply::utils::char_index::*;
+use fopply::proof::*;
 
 #[test]
 fn test() {
@@ -146,4 +147,10 @@ fn parsing_info() {
 fn read_math_fpl() {
 	let file = std::fs::read_to_string("fpl/math.fpl").unwrap();
 	let parsed = parser::math(&file).unwrap();
+
+	let math = read_math(&parsed).unwrap();
+	// if proofs_has_cycles(&parsed) {
+	// 	panic!("proof has cycles");
+	// }
+	is_proofs_correct(&parsed, &math).unwrap();
 }

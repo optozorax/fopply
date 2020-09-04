@@ -3,3 +3,4 @@ pub mod parsing;
 pub mod expr;
 pub mod utils;
 pub mod fpl;
+pub mod proof;
