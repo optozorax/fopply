@@ -138,7 +138,7 @@ pub fn is_proofs_correct(math: &Math, global_formulas: &BTreeMap<FormulaPosition
 						&formula.left.pattern,
 						&mut bindings,
 						&mut any_function_bindings
-					).ok_or("cannot find bindings")?;
+					).ok_or("cannot find bindings or match to formula")?;
 					let mut current_expr_part = apply_bindings(
 						formula.right.pattern.clone(),
 						&bindings,

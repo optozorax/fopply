@@ -81,15 +81,29 @@
 
 [neq]
 1. a != b <-> not(a = b);
-2. a != b <-> b != a;
-3. a != a <-> $false;
+2. a != b <-> b != a {
+	a != b;
+	^^^^^^ neq.1l;
+	not(a = b);
+	.   ^^^^^ eq.1l;
+	not(b = a);
+	^^^^^^^^^^ neq.1r;
+};
+3. a != a <-> $false {
+	a != a;
+	^^^^^^ neq.1l;
+	not(a = a);
+	.   ^^^^^ eq.2l;
+	not($true);
+	^^^^^^^^^^ not.1l;
+};
 
 [and]
 1. (a & b) & c <-> a & (b & c);
 2. a & b <-> b & a;
 3. a & a <-> a;
 4. a & $true <-> a;
-5. a & $false <-> $fasle;
+5. a & $false <-> $false;
 
 [andeq]
 1. a = b & $f(a) <-> a = b & $f(b);
@@ -104,6 +118,15 @@
 [ltgt]
 1. a < a <-> $false;
 2. a < b <-> b > a;
+3. a < b <-> not(a >= b);
+4. a > b <-> not(a <= b) {
+	a > b;
+	^^^^^ ltgt.2r;
+	b < a;
+	^^^^^ ltgt.3l;
+	not(b >= a);
+	.   ^^^^^^ ltgteq.2r;
+};
 
 [ltgteq]
 1. a <= b <-> (a < b) | (a = b);
@@ -136,7 +159,7 @@
 4. part(cond, then, else) <-> part(not(cond), else, then);
 5. part(cond, $f(part(cond2, then2, else2)), else) <-> part(cond, $f(part(cond2 & cond, then2, else2)), else);
 6. $f(part(cond, then, else)) <-> part(cond, $f(then), $f(else));
-7. $logic(part(cond, then, else)) <-> (cond & $logic(then)) | (cond & $logic(else));
+7. $logic(part(cond, then, else)) <-> (cond & $logic(then)) | (not(cond) & $logic(else));
 
 [brackets]
 1. brackets(a) <-> a;
