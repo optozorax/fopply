@@ -40,7 +40,7 @@ pub fn read_math(math: &Math) -> Result<BTreeMap<FormulaPosition, Formula>, &'st
 	Ok(result)
 }
 
-pub fn proofs_has_cycles(math: &Math) -> bool {
+pub fn proofs_has_cycles(math: &Math) -> Result<(), &'static str> {
 	let mut id_generator = IdGenerator::default();
 	let mut edges = vec![];
 	for NamedFormulas { name, formulas } in &math.0 {
@@ -62,7 +62,11 @@ pub fn proofs_has_cycles(math: &Math) -> bool {
 	}
 
 	let graph = Graph::<(), ()>::from_edges(&edges);
-	petgraph::algo::is_cyclic_directed(&graph)
+	if petgraph::algo::is_cyclic_directed(&graph) {
+		Err("proof has cycles")
+	} else {
+		Ok(())
+	}
 }
 
 pub fn is_proofs_correct(math: &Math, global_formulas: &BTreeMap<FormulaPosition, Formula>) -> Result<(), &'static str> {
