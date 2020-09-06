@@ -1,0 +1,173 @@
+[sum]
+1. (a+b)+c <-> a+(b+c);
+2. a+b <-> b+a;
+3. a+0 <-> a;
+
+[sub]
+1. a+(-b) <-> a-b;
+2. a-a <-> 0;
+3. a+(b-c) <->b+(a-c);
+4. a-b-c <-> a-(b+c);
+5. 0 <-> -0;
+6. a-(-b) <-> a+b;
+
+[mul]
+1. (a*b)*c <-> a*(b*c);
+2. a*b <-> b*a;
+3. a*1 <-> a;
+4. a*0 <-> 0;
+
+[submul]
+1. (-a)*b <-> -(a*b);
+
+[div]
+1. a/a <-> part(a != 0, 1, $undefined);
+2. a/0 <-> $undefined;
+3. a*(b/c) <-> b*(a/c);
+4. a/b/c <-> a/(b*c);
+5. a <-> part(b = 0, a, a*b/b) {
+	a;
+	^ part.1r x := b = 0;
+	part(b = 0, a, a);
+	.              ^ mul.3r;
+	part(b = 0, a, a*1);
+	.                ^ part.2r else := $undefined;
+	part(b = 0, a, a*part($true, 1, $undefined));
+	^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ part.4l;
+	part(not(b = 0), a*part($true, 1, $undefined), a);
+	^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ part.5l $f(x) := a*x;
+	part(not(b = 0), a*part($true & not(b = 0), 1, $undefined), a);
+	^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ part.4r;
+	part(b = 0, a, a*part($true & not(b = 0), 1, $undefined));
+	.                             ^^^^^^^^^^ neq.1r;
+	part(b = 0, a, a*part($true & b != 0, 1, $undefined));
+	.                     ^^^^^^^^^^^^^^ and.2l;
+	part(b = 0, a, a*part(b != 0 & $true, 1, $undefined));
+	.                     ^^^^^^^^^^^^^^ and.4l;
+	part(b = 0, a, a*part(b != 0, 1, $undefined));
+	.                ^^^^^^^^^^^^^^^^^^^^^^^^^^^ div.1r;
+};
+
+[muldiv]
+1. a*(b+c) <-> a*b + a*c;
+2. a*(b-c) <-> a*b - a*c {
+	a*(b-c);
+	.  ^^^ sub.1r;
+	a*(b+(-c));
+	^^^^^^^^^^ muldiv.1l;
+	a*b+a*(-c);
+	.   ^^^^^^ mul.2l;
+	a*b+(-c)*a;
+	.   ^^^^^^ submul.1l;
+	a*b+(-c*a);
+	^^^^^^^^^^ sub.1l;
+	a*b-c*a;
+	.   ^^^ mul.2l;
+};
+
+[not]
+1. not($true) <-> $false;
+2. not(not(a)) <-> a;
+3. $true <-> not($false) {
+	$true;
+	^^^^^ not.2r;
+	not(not($true));
+	.   ^^^^^^^^^^ not.1l;
+};
+
+[eq]
+1. a = b <-> b = a;
+2. a = a <-> $true;
+
+[neq]
+1. a != b <-> not(a = b);
+2. a != b <-> b != a;
+3. a != a <-> $false;
+
+[and]
+1. (a & b) & c <-> a & (b & c);
+2. a & b <-> b & a;
+3. a & a <-> a;
+4. a & $true <-> a;
+5. a & $false <-> $fasle;
+
+[andeq]
+1. a = b & $f(a) <-> a = b & $f(b);
+
+[or]
+1. (a | b) | c <-> a | (b | c);
+2. a | b <-> b | a;
+3. a | a <-> a;
+4. a | $false <-> a;
+5. a | $true <-> $true;
+
+[ltgt]
+1. a < a <-> $false;
+2. a < b <-> b > a;
+
+[ltgteq]
+1. a <= b <-> (a < b) | (a = b);
+2. a <= b <-> b >= a;
+3. a <= a <-> $true {
+	a <= a;
+	^^^^^^ ltgteq.1l;
+	(a < a) | (a = a);
+	.          ^^^^^ eq.2l;
+	(a < a) | $true;
+	^^^^^^^^^^^^^^^ or.5l;
+};
+4. a >= a <-> $true {
+	a >= a;
+	^^^^^^ ltgteq.2r;
+	a <= a;
+	^^^^^^ ltgteq.3l;
+};
+
+[abs]
+1. abs(x) <-> part(x >= 0, x, -x);
+
+[sign]
+1. sign(x) <-> part(x < 0, -1, part(x > 0, 1, 0));
+
+[part]
+1. part(x, a, a) <-> a;
+2. part($true, then, else) <-> then;
+3. part($false, then, else) <-> else;
+4. part(cond, then, else) <-> part(not(cond), else, then);
+5. part(cond, $f(part(cond2, then2, else2)), else) <-> part(cond, $f(part(cond2 & cond, then2, else2)), else);
+6. $f(part(cond, then, else)) <-> part(cond, $f(then), $f(else));
+7. $logic(part(cond, then, else)) <-> (cond & $logic(then)) | (cond & $logic(else));
+
+[brackets]
+1. brackets(a) <-> a;
+
+[test]
+1. 1*(2+6-5*(a-part(x >= 0, x, 0))) <-> part(x >= 0, 2+6-5*a+5*x, 2+6-5*a) {
+	1*(2+6-5*(a-part(x >= 0, x, 0)));
+	^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ part.6l $f(x) := 1*(2+6-5*(a-x));
+	part(x >= 0, 1*(2+6-5*(a-x)), 1*(2+6-5*(a-0)));
+	.                                       ^^^ sub.1r;
+	part(x >= 0, 1*(2+6-5*(a-x)), 1*(2+6-5*(a+(-0))));
+	.                                          ^^ sub.5r;
+	part(x >= 0, 1*(2+6-5*(a-x)), 1*(2+6-5*(a+0)));
+	.                                       ^^^ sum.3l;
+	part(x >= 0, 1*(2+6-5*(a-x)), 1*(2+6-5*a));
+	.            ^^^^^^^^^^^^^^^ mul.2l;
+	part(x >= 0, (2+6-5*(a-x))*1, 1*(2+6-5*a));
+	.            ^^^^^^^^^^^^^^^ mul.3l;
+	part(x >= 0, 2+6-5*(a-x), 1*(2+6-5*a));
+	.                         ^^^^^^^^^^^ mul.2l;
+	part(x >= 0, 2+6-5*(a-x), (2+6-5*a)*1);
+	.                         ^^^^^^^^^^^ mul.3l;
+	part(x >= 0, 2+6-5*(a-x), 2+6-5*a);
+	.                ^^^^^^^ muldiv.2l;
+	part(x >= 0, 2+6-(5*a-5*x), 2+6-5*a);
+	.                 ^^^^^^^ sub.1r;
+	part(x >= 0, 2+6-(5*a+(-5*x)), 2+6-5*a);
+	.              ^^^^^^^^^^^^^^ sub.4r;
+	part(x >= 0, 2+6-5*a-(-5*x), 2+6-5*a);
+	.                ^^^^^^^^^^ sub.6l;
+};
+
+[unsafe]
+1. a <-> b;

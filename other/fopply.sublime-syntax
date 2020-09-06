@@ -23,7 +23,7 @@ contexts:
     - match: '\$[a-zA-Z_]+'
       scope: keyword.control
 
-    - match: '\$\$[a-zA-Z_]+'
+    - match: '[a-zA-Z_]+\?'
       scope: entity.name.struct
 
     - match: '\b(-)?[0-9.]+\b'
