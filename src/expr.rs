@@ -106,7 +106,7 @@ impl Borrow<ExprPosition> for ExprPositionOwned {
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Copy)]
 pub struct PositionError(usize);
 
-impl<Arg> ExpressionExtensionInner for Arg where
+impl<Arg> detail::ExpressionExtensionInner for Arg where
 	Arg: GetInnerExpression,
 {
 	fn get_inner<'a>(&'a self, position: &ExprPosition, deep: usize) -> Result<&'a Self, PositionError> {
@@ -175,11 +175,14 @@ impl<Arg> ExpressionExtensionInner for Arg where
 	}
 }
 
-/// Внутренние методы для `ExpressionExtension`. Пользоваться этими методами не нужно. Я делаю его публичным только потому что компилятор ругается, вообще эти методы надо как-то сделать приватными. TODO.
-pub trait ExpressionExtensionInner: GetInnerExpression {
-	fn get_inner<'a>(&'a self, position: &ExprPosition, deep: usize) -> Result<&'a Self, PositionError>;
-	fn get_mut_inner<'a>(&'a mut self, position: &ExprPosition, deep: usize) -> Result<&'a mut Self, PositionError>;
-	fn travel_positions_inner<F: FnMut(&Self, &ExprPosition)>(&self, current_position: &mut ExprPositionOwned, f: &mut F);
+mod detail {
+	use super::*;
+
+	pub trait ExpressionExtensionInner: GetInnerExpression {
+		fn get_inner<'a>(&'a self, position: &ExprPosition, deep: usize) -> Result<&'a Self, PositionError>;
+		fn get_mut_inner<'a>(&'a mut self, position: &ExprPosition, deep: usize) -> Result<&'a mut Self, PositionError>;
+		fn travel_positions_inner<F: FnMut(&Self, &ExprPosition)>(&self, current_position: &mut ExprPositionOwned, f: &mut F);
+	}
 }
 
 pub trait ExpressionExtension: GetInnerExpression {
@@ -193,7 +196,7 @@ pub trait ExpressionExtension: GetInnerExpression {
 }
 
 impl<Arg> ExpressionExtension for Arg where
-	Arg: GetInnerExpression + ExpressionExtensionInner,
+	Arg: GetInnerExpression + detail::ExpressionExtensionInner,
 {
 	/// Получить ссылку на внутреннюю часть выражения. 
 	fn get<'a>(&'a self, position: &ExprPosition) -> Result<&'a Self, PositionError> {
