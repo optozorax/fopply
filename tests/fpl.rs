@@ -148,7 +148,7 @@ fn read_math_fpl() {
 	let file = std::fs::read_to_string("fpl/math.fpl").unwrap();
 	let parsed = parser::math(&file).unwrap();
 
-	let math = read_math(&parsed).expect("can't read math (formula bindings or number wrong)");
+	let math = read_math(&parsed).expect("can't read math");
 	if proofs_has_cycles(&parsed) {
 		panic!("proof has cycles");
 	}

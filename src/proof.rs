@@ -17,12 +17,12 @@ pub struct FormulaPosition {
 	pub position: usize,
 }
 
-pub fn read_math(math: &Math) -> Option<BTreeMap<FormulaPosition, Formula>> {
+pub fn read_math(math: &Math) -> Result<BTreeMap<FormulaPosition, Formula>, &'static str> {
 	let mut result = BTreeMap::new();
 	for NamedFormulas { name, formulas } in &math.0 {
 		for (index, formula) in formulas.iter().enumerate() {
 			if index + 1 != formula.position as usize {
-				return None;
+				return Err("wrong number in start of formula");
 			}
 
 			let position = FormulaPosition {
@@ -37,7 +37,7 @@ pub fn read_math(math: &Math) -> Option<BTreeMap<FormulaPosition, Formula>> {
 			result.insert(position, formula);
 		} 
 	}
-	Some(result)
+	Ok(result)
 }
 
 pub fn proofs_has_cycles(math: &Math) -> bool {

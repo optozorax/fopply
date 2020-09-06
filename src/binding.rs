@@ -11,7 +11,7 @@ pub struct FormulaPart {
 }
 
 impl Formula {
-	pub fn new(left: Expression, right: Expression) -> Option<Formula> {
+	pub fn new(left: Expression, right: Expression) -> Result<Formula, &'static str> {
 		let left_patterns = left.get_pattern_names();
 		let right_patterns = right.get_pattern_names();
 
@@ -39,15 +39,15 @@ impl Formula {
 		};
 
 		// Проверяем, что везде совпадает число аргументов
-		let left_anyfunctions = check_functions_equal_arguments(left_anyfunctions)?;
-		let right_anyfunctions = check_functions_equal_arguments(right_anyfunctions)?;
+		let left_anyfunctions = check_functions_equal_arguments(left_anyfunctions).ok_or("left part of formula has wrong count of arguments in anyfunctions")?;
+		let right_anyfunctions = check_functions_equal_arguments(right_anyfunctions).ok_or("right part of formula has wrong count of arguments in anyfunctions")?;
 
 		// Проверяем с обоих сторон одинаковые имена
 		if left_anyfunctions != right_anyfunctions {
-			return None;
+			return Err("left and right parts has wrong argument counts");
 		}
 
-		Some(
+		Ok(
 			Formula {
 				left: FormulaPart {
 					pattern: left,
