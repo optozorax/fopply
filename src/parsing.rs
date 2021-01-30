@@ -1,10 +1,12 @@
 use std::ops::Range;
+use crate::utils::span::*;
 
 use crate::expr::*;
 use crate::binding::{Binding, AnyFunctionPattern};
 use crate::utils::char_index::*;
 use crate::utils::apply::*;
 
+#[derive(Debug)]
 pub struct FormulaPosition {
 	pub module_name: String,
 	pub position: usize,
@@ -12,9 +14,21 @@ pub struct FormulaPosition {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ExpressionParsingGlobal {
+	pub span: GlobalSpan,
+	pub node: ExpressionMeta<ExpressionParsingGlobal>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ExpressionParsing {
-	span: Range<usize>,
-	node: ExpressionMeta<ExpressionParsing>,
+	pub span: LocalSpan,
+	pub node: ExpressionMeta<ExpressionParsing>,
+}
+
+impl GetInnerExpression for ExpressionParsingGlobal {
+	fn get_inner_expression(self) -> ExpressionMeta<Self> { self.node }
+	fn get_inner_expression_ref(&self) -> &ExpressionMeta<Self> { &self.node }
+	fn get_inner_expression_mut(&mut self) -> &mut ExpressionMeta<Self> { &mut self.node }
 }
 
 impl GetInnerExpression for ExpressionParsing {
@@ -23,35 +37,41 @@ impl GetInnerExpression for ExpressionParsing {
 	fn get_inner_expression_mut(&mut self) -> &mut ExpressionMeta<Self> { &mut self.node }
 }
 
+#[derive(Debug)]
 pub struct Formula {
 	pub left: ExpressionParsing,
 	pub right: ExpressionParsing,
 }
 
+#[derive(Debug)]
 pub struct ProofStep {
 	pub string: String,
-	pub expr: ExpressionParsing,
-	pub position: Range<CharIndex>,
-	pub used_formula: FormulaPosition,
-	pub bindings: Vec<Binding>,
-	pub function_bindings: Vec<(String, AnyFunctionPattern)>,
+	pub expr: Spanned<ExpressionParsing>,
+	pub position: Spanned<Range<CharIndex>>,
+	pub used_formula: Spanned<FormulaPosition>,
+	pub bindings: Spanned<Vec<Binding>>,
+	pub function_bindings: Spanned<Vec<(String, AnyFunctionPattern)>>,
 }
 
+#[derive(Debug)]
 pub struct Proof {
 	pub steps: Vec<ProofStep>,
 }
 
+#[derive(Debug)]
 pub struct FullFormula {
-	pub position: u64,
-	pub formula: Formula,
-	pub proof: Option<Proof>,
+	pub position: Spanned<u64>,
+	pub formula: Spanned<Formula>,
+	pub proof: Option<Spanned<Proof>>,
 }
 
+#[derive(Debug)]
 pub struct NamedFormulas {
 	pub name: String,
 	pub formulas: Vec<FullFormula>,
 }
 
+#[derive(Debug)]
 pub struct Math(pub Vec<NamedFormulas>);
 
 // TODO переделать на собственный алгоритм precedence!(), убрать костыль для парсинга неравенств и равенств
@@ -71,11 +91,22 @@ peg::parser!(
 			}
 
 		pub rule full_formula() -> FullFormula
-			= position:integer() "." _ formula:formula() _ proof:proof()? _ ";" {
+			= start:position!() position:integer() end:position!()  "." _ 
+			  start2:position!() formula:formula() end2:position!() _ 
+			  start3:position!() proof:proof()? end3:position!() _ ";" {
 				FullFormula {
-					position,
-					formula,
-					proof,
+					position: Spanned {
+						span: GlobalSpan(start..end),
+						inner: position,
+					},
+					formula: Spanned {
+						span: GlobalSpan(start2..end2),
+						inner: formula,
+					},
+					proof: proof.map(|x| Spanned {
+						span: GlobalSpan(start3..end3),
+						inner: x,
+					}),
 				}
 			}
 
@@ -87,17 +118,33 @@ peg::parser!(
 			}
 
 		pub rule proof_step() -> ProofStep
-			= expr:&expr_normalized() string:$(expr_normalized()) _ ";" _ 
-			  position:visual_positon() _ used_formula:formula_position() _ 
-			  bindings:binding() ** (_ "," _ ) _ 
-			  function_bindings:function_binding() ** (_ "," _ ) _ ";" {
+			= start1:position!() expr:&expr_normalized() string:$(expr_normalized()) end1:position!() _ ";" _ 
+			  start2:position!() position:visual_positon() end2:position!() _ 
+			  start3:position!() used_formula:formula_position() end3:position!() _ 
+			  start4:position!() bindings:binding() ** (_ "," _ ) end4:position!() _ 
+			  start5:position!() function_bindings:function_binding() ** (_ "," _ ) end5:position!() _ ";" {
 				ProofStep {
 					string: string.to_string(),
-					expr,
-					position,
-					used_formula,
-					bindings,
-					function_bindings,
+					expr: Spanned {
+						span: GlobalSpan(start1..end1),
+						inner: expr,
+					},
+					position: Spanned {
+						span: GlobalSpan(start2..end2),
+						inner: position,
+					},
+					used_formula: Spanned {
+						span: GlobalSpan(start3..end3),
+						inner: used_formula,
+					},
+					bindings: Spanned {
+						span: GlobalSpan(start4..end4),
+						inner: bindings,
+					},
+					function_bindings: Spanned {
+						span: GlobalSpan(start5..end5),
+						inner: function_bindings,
+					},
 				}
 			}
 
@@ -137,96 +184,95 @@ peg::parser!(
 
 		pub rule expr_normalized() -> ExpressionParsing
 			= expr_start:position!() result:expr() {
-				let mut expr_result = result;
-				substract_position(expr_start, &mut expr_result);
-				expr_result
+				localize_span(expr_start, result)
 			}
 
-		pub rule expr() -> ExpressionParsing
+		pub rule expr() -> ExpressionParsingGlobal
 			= or()
 
-		rule or() -> ExpressionParsing
+		rule or() -> ExpressionParsingGlobal
 			= start:position!() 
 			  l:and() 
 			  r:(_ z:$("|") _ p:or() { (z, p) })? 
 			  end:position!() 
 			{
 				match r {
-					Some((z, p)) => ExpressionParsing {
-						span: start..end,
+					Some((z, p)) => ExpressionParsingGlobal {
+						span: GlobalSpan(start..end),
 						node: ExpressionMeta::NamedFunction { name: z.to_string(), args: vec![l, p] }
 					},
 					None => l,
 				}
 			}
 
-		rule and() -> ExpressionParsing
+		rule and() -> ExpressionParsingGlobal
 			= start:position!() 
 			  l:equality() 
 			  r:(_ z:$("&") _ p:and() { (z, p) })? 
 			  end:position!() 
 			{
 				match r {
-					Some((z, p)) => ExpressionParsing {
-						span: start..end,
+					Some((z, p)) => ExpressionParsingGlobal {
+						span: GlobalSpan(start..end),
 						node: ExpressionMeta::NamedFunction { name: z.to_string(), args: vec![l, p] }
 					},
 					None => l,
 				}
 			}
 
-		rule equality() -> ExpressionParsing
+		rule equality() -> ExpressionParsingGlobal
 			= start:position!() 
 			  l:sum() 
 			  r:(_ z:$("="/"!="/">="/"<="/">"/"<") _ p:sum() { (z, p) })? 
 			  end:position!() 
 			{
 				match r {
-					Some((z, p)) => ExpressionParsing {
-						span: start..end,
+					Some((z, p)) => ExpressionParsingGlobal {
+						span: GlobalSpan(start..end),
 						node: ExpressionMeta::NamedFunction { name: z.to_string(), args: vec![l, p] }
 					},
 					None => l,
 				}
 			}
 
-		rule sum() -> ExpressionParsing
+		rule sum() -> ExpressionParsingGlobal
 			= start:position!() 
 			  l:product() 
-			  r:(_ z:$("+"/"-") _ p:sum() { (z, p) })? 
-			  end:position!() 
+			  r:(_ z:$("+"/"-") _ r:product() end:position!()  { (z, r, end) })* 
 			{
-				match r {
-					Some((z, p)) => ExpressionParsing {
-						span: start..end,
-						node: ExpressionMeta::NamedFunction { name: z.to_string(), args: vec![l, p] }
-					},
-					None => l,
+				let mut result = l;
+				for (z, r, end) in r {
+					result = ExpressionParsingGlobal {
+						span: GlobalSpan(start..end),
+						node: ExpressionMeta::NamedFunction { name: z.to_string(), args: vec![result, r] }
+					};
 				}
+				result
 			}
 			/ start:position!() "-" _ l:product() end:position!() {
-				ExpressionParsing {
-					span: start..end,
+				ExpressionParsingGlobal {
+					span: GlobalSpan(start..end),
 					node: ExpressionMeta::NamedFunction { name: "negative".to_string(), args: vec![l] }
 				}
 			}
 
-		rule product() -> ExpressionParsing
+		rule product() -> ExpressionParsingGlobal
 			= start:position!() 
 			  l:power() 
-			  r:(_ z:$("*"/"/") _ p:product() { (z, p) })? 
+			  r:(_ z:$("*"/"/") _ r:power() end:position!()  { (z, r, end) })* 
 			  end:position!() 
 			{
-				match r {
-					Some((z, p)) => ExpressionParsing {
-						span: start..end,
-						node: ExpressionMeta::NamedFunction { name: z.to_string(), args: vec![l, p] }
-					},
-					None => l,
+				let mut result = l;
+				for (z, r, end) in r {
+					result = ExpressionParsingGlobal {
+						span: GlobalSpan(start..end),
+						node: ExpressionMeta::NamedFunction { name: z.to_string(), args: vec![result, r] }
+					};
 				}
+				result
 			}
 
-		rule power() -> ExpressionParsing
+		rule power() -> ExpressionParsingGlobal
 			= start:position!() 
 			  l:atom()
 			  r:(_ z:$("^") _ p:power() { (z, p) })? 
@@ -240,23 +286,23 @@ peg::parser!(
 							let a = l;
 
 							let a_pos = start;
-							let b_pos = p.span.start;
-							let c_pos = p.span.end;
+							let b_pos = p.span.0.start;
+							let c_pos = p.span.0.end;
 
-							let l = ExpressionParsing {
-								span: a_pos..b_pos,
+							let l = ExpressionParsingGlobal {
+								span: GlobalSpan(a_pos..b_pos),
 								node: ExpressionMeta::NamedFunction { name: z.to_string(), args: vec![a, b] }
 							};
 
-							ExpressionParsing {
-								span: b_pos..c_pos,
+							ExpressionParsingGlobal {
+								span: GlobalSpan(b_pos..c_pos),
 								node: ExpressionMeta::NamedFunction { name: z.to_string(), args: vec![l, c] }
 							}
 						},
 						other => {
-							let p = ExpressionParsing { span: p.span, node: other };
-							ExpressionParsing {
-								span: start..end,
+							let p = ExpressionParsingGlobal { span: p.span, node: other };
+							ExpressionParsingGlobal {
+								span: GlobalSpan(start..end),
 								node: ExpressionMeta::NamedFunction { name: z.to_string(), args: vec![l, p] }
 							}
 						},
@@ -265,7 +311,7 @@ peg::parser!(
 				}
 			}
 
-		rule atom() -> ExpressionParsing
+		rule atom() -> ExpressionParsingGlobal
 			= "(" v:expr() ")" { v }
 
 			/ any_function()
@@ -276,42 +322,42 @@ peg::parser!(
 
 			/ integer_value()
 
-		rule pattern() -> ExpressionParsing
+		rule pattern() -> ExpressionParsingGlobal
 			= start:position!() name:identifier() end:position!() { 
-				ExpressionParsing {
-					span: start..end,
+				ExpressionParsingGlobal {
+					span: GlobalSpan(start..end),
 					node: ExpressionMeta::Pattern { name } 
 				}
 			}
 
-		rule function() -> ExpressionParsing
+		rule function() -> ExpressionParsingGlobal
 			= start:position!() name:identifier() "(" _ args:expr() ** (_ "," _) _ ")" end:position!() { 
-				ExpressionParsing {
-					span: start..end,
+				ExpressionParsingGlobal {
+					span: GlobalSpan(start..end),
 					node: ExpressionMeta::NamedFunction { name, args }
 				}
 			}
 
-		rule any_function() -> ExpressionParsing
+		rule any_function() -> ExpressionParsingGlobal
 			= start:position!() "$" name:identifier() "(" _ args:expr() ** (_ "," _) _ ")" end:position!() { 
-				ExpressionParsing {
-					span: start..end,
+				ExpressionParsingGlobal {
+					span: GlobalSpan(start..end),
 					node: ExpressionMeta::AnyFunction { name, args }
 				}
 			}
 
-		rule integer_value() -> ExpressionParsing
+		rule integer_value() -> ExpressionParsingGlobal
 			= start:position!() value:integer() end:position!() { 
-				ExpressionParsing {
-					span: start..end,
+				ExpressionParsingGlobal {
+					span: GlobalSpan(start..end),
 					node: ExpressionMeta::IntegerValue { value: value as i64 }
 				}
 			}
 
-		rule named_value() -> ExpressionParsing
+		rule named_value() -> ExpressionParsingGlobal
 			= start:position!() "$" name:identifier() end:position!() { 
-				ExpressionParsing {
-					span: start..end,
+				ExpressionParsingGlobal {
+					span: GlobalSpan(start..end),
 					node: ExpressionMeta::NamedValue { name }
 				}
 			}
@@ -328,37 +374,25 @@ peg::parser!(
 	}
 );
 
-pub fn substract_position(to_substract: usize, expr: &mut ExpressionParsing) {
-	expr.travel_mut(&mut |expr| {
-		expr.span.start -= to_substract;
-		expr.span.end -= to_substract;
-	});
-}
-
-pub fn clear_parsing_info(expr: ExpressionParsing) -> Expression {
-	use ExpressionMeta::*;
-
-	Expression(
-		match expr.node {
-			AnyFunction { name, args } => 
-				AnyFunction { name, args: args.into_iter().map(clear_parsing_info).collect() },
-			NamedFunction { name, args } =>
-				NamedFunction { name, args: args.into_iter().map(clear_parsing_info).collect() },
-			Pattern { name } => 
-				Pattern { name },
-			NamedValue { name } => 
-				NamedValue { name },
-			IntegerValue { value } => 
-				IntegerValue { value },
-		}
+pub fn localize_span(start: usize, expr: ExpressionParsingGlobal) -> ExpressionParsing {
+	expr.retype(
+		&|expr| (expr.span.localize_span(start), expr.node), 
+		&|span, node| ExpressionParsing { span, node }
 	)
 }
 
-pub fn process_expression_parsing(expr: ExpressionParsing) -> (Expression, Vec<(ExprPositionOwned, Range<usize>)>) {
+pub fn clear_parsing_info(expr: ExpressionParsing) -> Expression {
+	expr.retype(
+		&|expr| ((), expr.node), 
+		&|(), node| Expression(node)
+	)
+}
+
+pub fn process_expression_parsing(expr: ExpressionParsing) -> (Expression, Vec<(ExprPositionOwned, LocalSpan)>) {
 	fn process(
 		expr: ExpressionMeta<ExpressionParsing>, 
 		current_position: &mut ExprPositionOwned, 
-		storage: &mut Vec<(ExprPositionOwned, Range<usize>)>
+		storage: &mut Vec<(ExprPositionOwned, LocalSpan)>
 	) -> Expression {
 		use ExpressionMeta::*;
 

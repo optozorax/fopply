@@ -1,6 +1,9 @@
+use std::collections::BTreeSet;
 use crate::expr::*;
 use crate::utils::apply::*;
+use crate::utils::joined_by::*;
 use std::collections::BTreeMap;
+use thiserror::Error;
 
 /// Одна часть в формуле `formula_part <-> ...`.
 #[derive(Clone, Debug)]
@@ -10,8 +13,23 @@ pub struct FormulaPart {
 	pub anyfunction_names: Vec<(String, usize)>,
 }
 
+#[derive(Debug, Error)]
+pub enum FormulaError {
+	#[error("wrong count of arguments in anyfunctions: in function `{name}`, should be {should_be}, but {actual} is presented")]
+	WrongCountOfArgumentsInAnyFunctions {
+		name: String,
+		should_be: usize,
+		actual: usize,
+	},
+	#[error("not equal anyfunctions in both sides of equation: only left side has this [{}], and only right side has this [{}]", left_side.iter().joined_by(", "), right_side.iter().joined_by(", "))]
+	NotEqualAnyfunctions {
+		left_side: Vec<AnyFunctionNames>,
+		right_side: Vec<AnyFunctionNames>,
+	}
+}
+
 impl Formula {
-	pub fn new(left: Expression, right: Expression) -> Result<Formula, &'static str> {
+	pub fn new(left: Expression, right: Expression) -> Result<Formula, FormulaError> {
 		let left_patterns = left.get_pattern_names();
 		let right_patterns = right.get_pattern_names();
 
@@ -21,30 +39,39 @@ impl Formula {
 		let left_anyfunctions = left.get_anyfunction_names();
 		let right_anyfunctions = right.get_anyfunction_names();
 
-		let check_functions_equal_arguments = |functions| -> Option<_> {
-			let mut arg_count = BTreeMap::new();
-			for (name, count) in functions {
+		let check_functions_equal_arguments = |functions| -> Result<_, FormulaError> {
+			let mut arg_count: BTreeMap<String, usize> = BTreeMap::new();
+			for AnyFunctionNames { name, arguments_count } in functions {
 				use std::collections::btree_map::Entry::*;
 
-				match arg_count.entry(name) {
-					Vacant(vacant) => { vacant.insert(count); },
+				match arg_count.entry(name.clone()) {
+					Vacant(vacant) => { vacant.insert(arguments_count); },
 					Occupied(occupied) => {
-						if *occupied.get() != count {
-							return None
+						if *occupied.get() != arguments_count {
+							return Err(FormulaError::WrongCountOfArgumentsInAnyFunctions {
+								name: name.to_string(),
+								should_be: *occupied.get(), 
+								actual: arguments_count,
+							});
 						}
 					}
 				}
 			}
-			Some(arg_count)
+			Ok(arg_count)
 		};
 
 		// Проверяем, что везде совпадает число аргументов
-		let left_anyfunctions = check_functions_equal_arguments(left_anyfunctions).ok_or("left part of formula has wrong count of arguments in anyfunctions")?;
-		let right_anyfunctions = check_functions_equal_arguments(right_anyfunctions).ok_or("right part of formula has wrong count of arguments in anyfunctions")?;
+		let left_anyfunctions = check_functions_equal_arguments(left_anyfunctions)?;
+		let right_anyfunctions = check_functions_equal_arguments(right_anyfunctions)?;
 
 		// Проверяем с обоих сторон одинаковые имена
 		if left_anyfunctions != right_anyfunctions {
-			return Err("left and right parts has wrong argument counts");
+			let left_anyfunctions = left_anyfunctions.into_iter().map(|x| AnyFunctionNames { name: x.0, arguments_count: x.1 }).collect::<BTreeSet<_>>();
+			let right_anyfunctions = right_anyfunctions.into_iter().map(|x| AnyFunctionNames { name: x.0, arguments_count: x.1 }).collect::<BTreeSet<_>>();
+			return Err(FormulaError::NotEqualAnyfunctions {
+				left_side: left_anyfunctions.difference(&right_anyfunctions).cloned().collect(),
+				right_side: right_anyfunctions.difference(&left_anyfunctions).cloned().collect(),
+			});
 		}
 
 		Ok(
@@ -206,7 +233,7 @@ pub fn apply_bindings<A: AnyFunctionBinding<>>(
 }
 
 /// `$f(..variables) := pattern`
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct AnyFunctionPattern {
 	pub pattern: Expression,
 	pub variables: Vec<String>,

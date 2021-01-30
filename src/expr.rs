@@ -1,6 +1,9 @@
 use std::collections::BTreeSet;
 use std::borrow::Borrow;
+use std::ops::Deref;
 use crate::utils::apply::*;
+use std::fmt;
+use crate::utils::joined_by::*;
 
 /// Обобщённое выражение. Обобщённость нужна для возможности как задать положения в парсинге, так и для возмоности задания обычного выражения. Была выбрана такая обобщённость вместо копипасты данной структуры отдельно для парсинга.
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -94,12 +97,24 @@ impl ExprPosition {
 	pub fn from_slice_mut(slice: &mut [usize]) -> &mut Self {
 		unsafe { &mut *(slice as *mut [usize] as *mut ExprPosition) }
 	}
+
+	pub fn cut_to_error(&self, error_in: PositionError) -> &Self {
+		Self::from_slice(&self.0[..=error_in.0])
+	}
 }
 
 impl Borrow<ExprPosition> for ExprPositionOwned {
 	fn borrow(&self) -> &ExprPosition {
 		ExprPosition::from_slice(self.0.borrow())
 	}
+}
+
+impl Deref for ExprPositionOwned {
+    type Target = ExprPosition;
+
+    fn deref(&self) -> &Self::Target {
+        &self.borrow()
+    }
 }
 
 /// Показывает в каком положении в массиве `ExprPosition` не было найдено то что нужно.
@@ -192,7 +207,11 @@ pub trait ExpressionExtension: GetInnerExpression {
 	fn travel_mut<'a, F: for<'b> FnMut(&'b mut Self)>(&'a mut self, f: &mut F);
 	fn travel_positions<F: FnMut(&Self, &ExprPosition)>(&self, f: F);
 	fn get_pattern_names(&self) -> BTreeSet<String>;
-	fn get_anyfunction_names(&self) -> BTreeSet<(String, usize)>;
+	fn get_anyfunction_names(&self) -> BTreeSet<AnyFunctionNames>;
+	fn retype<Y, T, FD, FS>(self, destructure: &FD, structure: &FS) -> T where 
+		T: GetInnerExpression, 
+		FD: Fn(Self) -> (Y, ExpressionMeta<Self>), 
+		FS: Fn(Y, ExpressionMeta<T>) -> T;
 }
 
 impl<Arg> ExpressionExtension for Arg where
@@ -262,13 +281,60 @@ impl<Arg> ExpressionExtension for Arg where
 	}
 
 	/// Возвращает имена и количество аргументов всех anyfunction в выражении. Если в выражении имеется `$f` от двух аргументов и от трёх, то возвратятся оба.
-	fn get_anyfunction_names(&self) -> BTreeSet<(String, usize)> {
+	fn get_anyfunction_names(&self) -> BTreeSet<AnyFunctionNames> {
 		let mut result = BTreeSet::new();
 		self.travel(&mut |expr| {
 			if let ExpressionMeta::AnyFunction { name, args } = expr.get_inner_expression_ref() {
-				result.insert((name.clone(), args.len()));
+				result.insert(AnyFunctionNames { name: name.clone(), arguments_count: args.len() });
 			}
 		});
 		result
 	}
+
+	fn retype<Y, T, FD, FS>(self, destructure: &FD, structure: &FS) -> T where 
+		T: GetInnerExpression, 
+		FD: Fn(Self) -> (Y, ExpressionMeta<Self>), 
+		FS: Fn(Y, ExpressionMeta<T>) -> T,
+	{	
+		use ExpressionMeta::*;
+		let (y, expr) = destructure(self);
+		structure(y, match expr {
+			AnyFunction { name, args } => 
+				AnyFunction { name, args: args.into_iter().map(|x| x.retype(destructure, structure)).collect() },
+			NamedFunction { name, args } =>
+				NamedFunction { name, args: args.into_iter().map(|x| x.retype(destructure, structure)).collect() },
+			Pattern { name } => Pattern { name },
+			NamedValue { name } => NamedValue { name },
+			IntegerValue { value } => IntegerValue { value },
+		})
+	}
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct AnyFunctionNames {
+	pub name: String,
+	pub arguments_count: usize,
+}
+
+impl fmt::Display for AnyFunctionNames {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    	write!(f, "{}{{{}}}", self.name, self.arguments_count)
+    }
+}
+
+impl fmt::Display for Expression {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		use ExpressionMeta::*;
+    	match &self.0 {
+			AnyFunction { name, args } => write!(f, "${}({})", name, args.iter().joined_by(", ")),
+			NamedFunction { name, args } => match &name[..] {
+				"+" | "-" | "*" | "/" | "!=" | "=" | "<" | ">" | "<=" | ">=" | "|" | "&" 
+					=> write!(f, "({})", args.iter().joined_by(name)),
+				_ => write!(f, "{}({})", name, args.iter().joined_by(", ")),
+			}
+			Pattern { name } => write!(f, "{}", name),
+			NamedValue { name } => write!(f, "${}", name),
+			IntegerValue { value } => write!(f, "{}", value),
+    	}
+    }
 }
