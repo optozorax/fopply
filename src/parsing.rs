@@ -193,31 +193,33 @@ peg::parser!(
 		rule or() -> ExpressionParsingGlobal
 			= start:position!() 
 			  l:and() 
-			  r:(_ z:$("|") _ p:or() { (z, p) })? 
+			  r:(_ z:$("|") _ r:and() end:position!()  { (z, r, end) })* 
 			  end:position!() 
 			{
-				match r {
-					Some((z, p)) => ExpressionParsingGlobal {
+				let mut result = l;
+				for (z, r, end) in r {
+					result = ExpressionParsingGlobal {
 						span: GlobalSpan(start..end),
-						node: ExpressionMeta::NamedFunction { name: z.to_string(), args: vec![l, p] }
-					},
-					None => l,
+						node: ExpressionMeta::NamedFunction { name: z.to_string(), args: vec![result, r] }
+					};
 				}
+				result
 			}
 
 		rule and() -> ExpressionParsingGlobal
 			= start:position!() 
 			  l:equality() 
-			  r:(_ z:$("&") _ p:and() { (z, p) })? 
+			  r:(_ z:$("&") _ r:equality() end:position!()  { (z, r, end) })* 
 			  end:position!() 
 			{
-				match r {
-					Some((z, p)) => ExpressionParsingGlobal {
+				let mut result = l;
+				for (z, r, end) in r {
+					result = ExpressionParsingGlobal {
 						span: GlobalSpan(start..end),
-						node: ExpressionMeta::NamedFunction { name: z.to_string(), args: vec![l, p] }
-					},
-					None => l,
+						node: ExpressionMeta::NamedFunction { name: z.to_string(), args: vec![result, r] }
+					};
 				}
+				result
 			}
 
 		rule equality() -> ExpressionParsingGlobal
@@ -279,33 +281,9 @@ peg::parser!(
 			  end:position!() 
 			{
 				match r {
-					Some((z, p)) => match p.node {
-						ExpressionMeta::NamedFunction { name, mut args } if name == z && args.len() == 2 => {
-							let c = args.pop().unwrap();
-							let b = args.pop().unwrap();
-							let a = l;
-
-							let a_pos = start;
-							let b_pos = p.span.0.start;
-							let c_pos = p.span.0.end;
-
-							let l = ExpressionParsingGlobal {
-								span: GlobalSpan(a_pos..b_pos),
-								node: ExpressionMeta::NamedFunction { name: z.to_string(), args: vec![a, b] }
-							};
-
-							ExpressionParsingGlobal {
-								span: GlobalSpan(b_pos..c_pos),
-								node: ExpressionMeta::NamedFunction { name: z.to_string(), args: vec![l, c] }
-							}
-						},
-						other => {
-							let p = ExpressionParsingGlobal { span: p.span, node: other };
-							ExpressionParsingGlobal {
-								span: GlobalSpan(start..end),
-								node: ExpressionMeta::NamedFunction { name: z.to_string(), args: vec![l, p] }
-							}
-						},
+					Some((z, p)) => ExpressionParsingGlobal {
+						span: GlobalSpan(start..end),
+						node: ExpressionMeta::NamedFunction { name: z.to_string(), args: vec![l, p] }
 					},
 					None => l,
 				}

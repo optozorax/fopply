@@ -249,3 +249,28 @@
     (a*a-b*b)+0;
     ^^^^^^^^^^^ sum.3l;
 };
+
+[identity]
+1. a <-> a;
+
+[assert_parser]
+1. a+b-c-d-e <-> ((((a+b)-c)-d)-e) {
+    a+b-c-d-e;
+    ^^^^^^^^^ identity.1l;
+};
+2. a*b/c/e*d/f <-> (((((a*b)/c)/e)*d)/f) {
+    a*b/c/e*d/f;
+    ^^^^^^^^^^^ identity.1l;
+};
+3. a^b^c^d^e <-> a^(b^(c^(d^e))) {
+    a^b^c^d^e;
+    ^^^^^^^^^ identity.1l;
+};
+4. a & b & c & d <-> (((a & b) & c) & d) {
+    a & b & c & d;
+    ^^^^^^^^^^^^^ identity.1l;
+};
+5. a*a^a-a^a+7 = 0^3 & $false | x-c*c = d <-> ((((((a*(a^a))-(a^a))+7) = (0^3)) & $false) | ((x-(c*c)) = d)) {
+    a*a^a-a^a+7 = 0^3 & $false | x-c*c = d;
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ identity.1l;
+};
