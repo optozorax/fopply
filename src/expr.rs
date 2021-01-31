@@ -1,40 +1,25 @@
-use std::collections::BTreeSet;
-use std::borrow::Borrow;
-use std::ops::Deref;
-use crate::utils::apply::*;
-use std::fmt;
-use crate::utils::joined_by::*;
+use std::{borrow::Borrow, collections::BTreeSet, fmt, ops::Deref};
+
+use crate::utils::{apply::*, joined_by::*};
 
 /// Обобщённое выражение. Обобщённость нужна для возможности как задать положения в парсинге, так и для возмоности задания обычного выражения. Была выбрана такая обобщённость вместо копипасты данной структуры отдельно для парсинга.
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum ExpressionMeta<Arg> {
 	/// В математике называется "переменной", но здесь это называется паттерном. Матчится с чем угодно, именованная часть выражения. В выражении выглядит как: `a`, `b`, `c`.
 	// TODO переименовать в Any
-	Pattern {
-		name: String
-	},
+	Pattern { name: String },
 
 	/// Любая функция с неизвестным именем с конкретным числом аргументов. В выражении выглядит как: `$f(a, b)`.
-	AnyFunction {
-		name: String,
-		args: Vec<Arg>,
-	},
+	AnyFunction { name: String, args: Vec<Arg> },
 
 	/// Функция с именем и определённым набором аргументов. В выражении выглядит как: `a+b`, `sin(1)`.
-	NamedFunction {
-		name: String,
-		args: Vec<Arg>,
-	},
+	NamedFunction { name: String, args: Vec<Arg> },
 
 	/// Именованная константа. В выражении выглядит как: `$false`, `$true`, `$i`, `$undefined`.
-	NamedValue {
-		name: String
-	},
+	NamedValue { name: String },
 
 	/// Числовая константа. В выражении выглядит как: `1`, `1000`.
-	IntegerValue {
-		value: i64
-	},
+	IntegerValue { value: i64 },
 }
 
 // TODO применить где-нибудь
@@ -48,17 +33,17 @@ pub enum ExpressionKind {
 }
 
 impl<Arg> From<&ExpressionMeta<Arg>> for ExpressionKind {
-    fn from(expr: &ExpressionMeta<Arg>) -> Self {
-    	use ExpressionMeta::*;
+	fn from(expr: &ExpressionMeta<Arg>) -> Self {
+		use ExpressionMeta::*;
 
-        match expr {
+		match expr {
 			Pattern { .. } => ExpressionKind::Pattern,
 			AnyFunction { .. } => ExpressionKind::AnyFunction,
 			NamedFunction { .. } => ExpressionKind::NamedFunction,
 			NamedValue { .. } => ExpressionKind::NamedValue,
 			IntegerValue { .. } => ExpressionKind::IntegerValue,
-        }
-    }
+		}
+	}
 }
 
 /// Ввиду обобщённости `ExpressionMeta`, нужно как-то получать его обратно когда обращаешься к `args`, поэтому сделан такой трейт.
@@ -74,7 +59,9 @@ pub struct Expression(pub ExpressionMeta<Expression>);
 
 impl GetInnerExpression for Expression {
 	fn get_inner_expression(self) -> ExpressionMeta<Self> { self.0 }
+
 	fn get_inner_expression_ref(&self) -> &ExpressionMeta<Self> { &self.0 }
+
 	fn get_inner_expression_mut(&mut self) -> &mut ExpressionMeta<Self> { &mut self.0 }
 }
 
@@ -89,57 +76,44 @@ pub struct ExprPosition(pub [usize]);
 
 impl ExprPosition {
 	/// Создать ссылку на `ExprPosition` из слайса на `usize`.
-	pub fn from_slice(slice: &[usize]) -> &Self {
-		unsafe { &*(slice as *const [usize] as *const ExprPosition) }
-	}
+	pub fn from_slice(slice: &[usize]) -> &Self { unsafe { &*(slice as *const [usize] as *const ExprPosition) } }
 
 	/// Создать мутабельную ссылку на `ExprPosition` из слайса на `usize`.
 	pub fn from_slice_mut(slice: &mut [usize]) -> &mut Self {
 		unsafe { &mut *(slice as *mut [usize] as *mut ExprPosition) }
 	}
 
-	pub fn cut_to_error(&self, error_in: PositionError) -> &Self {
-		Self::from_slice(&self.0[..=error_in.0])
-	}
+	pub fn cut_to_error(&self, error_in: PositionError) -> &Self { Self::from_slice(&self.0[..=error_in.0]) }
 }
 
 impl Borrow<ExprPosition> for ExprPositionOwned {
-	fn borrow(&self) -> &ExprPosition {
-		ExprPosition::from_slice(self.0.borrow())
-	}
+	fn borrow(&self) -> &ExprPosition { ExprPosition::from_slice(self.0.borrow()) }
 }
 
 impl Deref for ExprPositionOwned {
-    type Target = ExprPosition;
+	type Target = ExprPosition;
 
-    fn deref(&self) -> &Self::Target {
-        &self.borrow()
-    }
+	fn deref(&self) -> &Self::Target { &self.borrow() }
 }
 
 /// Показывает в каком положении в массиве `ExprPosition` не было найдено то что нужно.
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Copy)]
 pub struct PositionError(usize);
 
-impl<Arg> detail::ExpressionExtensionInner for Arg where
-	Arg: GetInnerExpression,
+impl<Arg> detail::ExpressionExtensionInner for Arg
+where Arg: GetInnerExpression
 {
 	fn get_inner<'a>(&'a self, position: &ExprPosition, deep: usize) -> Result<&'a Self, PositionError> {
 		use ExpressionMeta::*;
 
 		match &position.0 {
-			[start, tail @ ..] => {
-				match self.get_inner_expression_ref() {
-					AnyFunction { name: _, args } |
-					NamedFunction { name: _, args } => args
-						.get(*start)
-						.ok_or(PositionError(deep))?
-						.get_inner(ExprPosition::from_slice(tail), deep+1),
+			[start, tail @ ..] => match self.get_inner_expression_ref() {
+				AnyFunction { name: _, args } | NamedFunction { name: _, args } => args
+					.get(*start)
+					.ok_or(PositionError(deep))?
+					.get_inner(ExprPosition::from_slice(tail), deep + 1),
 
-					Pattern { .. } |
-					NamedValue { .. } |
-					IntegerValue { .. } => Err(PositionError(deep)),
-				}
+				Pattern { .. } | NamedValue { .. } | IntegerValue { .. } => Err(PositionError(deep)),
 			},
 			[] => Ok(self),
 		}
@@ -149,24 +123,23 @@ impl<Arg> detail::ExpressionExtensionInner for Arg where
 		use ExpressionMeta::*;
 
 		match &position.0 {
-			[start, tail @ ..] => {
-				match self.get_inner_expression_mut() {
-					AnyFunction { name: _, args } |
-					NamedFunction { name: _, args } => args
-						.get_mut(*start)
-						.ok_or(PositionError(deep))?
-						.get_mut_inner(ExprPosition::from_slice(tail), deep+1),
+			[start, tail @ ..] => match self.get_inner_expression_mut() {
+				AnyFunction { name: _, args } | NamedFunction { name: _, args } => args
+					.get_mut(*start)
+					.ok_or(PositionError(deep))?
+					.get_mut_inner(ExprPosition::from_slice(tail), deep + 1),
 
-					Pattern { .. } |
-					NamedValue { .. } |
-					IntegerValue { .. } => Err(PositionError(deep)),
-				}
+				Pattern { .. } | NamedValue { .. } | IntegerValue { .. } => Err(PositionError(deep)),
 			},
 			[] => Ok(self),
 		}
 	}
 
-	fn travel_positions_inner<F: FnMut(&Self, &ExprPosition)>(&self, current_position: &mut ExprPositionOwned, f: &mut F) {
+	fn travel_positions_inner<F: FnMut(&Self, &ExprPosition)>(
+		&self,
+		current_position: &mut ExprPositionOwned,
+		f: &mut F,
+	) {
 		use ExpressionMeta::*;
 
 		f(self, (&*current_position).borrow());
@@ -180,12 +153,9 @@ impl<Arg> detail::ExpressionExtensionInner for Arg where
 		};
 
 		match self.get_inner_expression_ref() {
-			AnyFunction { name: _, args } |
-			NamedFunction { name: _, args } => process_args(&*args),
+			AnyFunction { name: _, args } | NamedFunction { name: _, args } => process_args(&*args),
 
-			Pattern { name: _ } |
-			NamedValue { name: _ } |
-			IntegerValue { value: _ } => (),
+			Pattern { name: _ } | NamedValue { name: _ } | IntegerValue { value: _ } => {},
 		}
 	}
 }
@@ -195,8 +165,13 @@ mod detail {
 
 	pub trait ExpressionExtensionInner: GetInnerExpression {
 		fn get_inner<'a>(&'a self, position: &ExprPosition, deep: usize) -> Result<&'a Self, PositionError>;
-		fn get_mut_inner<'a>(&'a mut self, position: &ExprPosition, deep: usize) -> Result<&'a mut Self, PositionError>;
-		fn travel_positions_inner<F: FnMut(&Self, &ExprPosition)>(&self, current_position: &mut ExprPositionOwned, f: &mut F);
+		fn get_mut_inner<'a>(&'a mut self, position: &ExprPosition, deep: usize)
+		    -> Result<&'a mut Self, PositionError>;
+		fn travel_positions_inner<F: FnMut(&Self, &ExprPosition)>(
+			&self,
+			current_position: &mut ExprPositionOwned,
+			f: &mut F,
+		);
 	}
 }
 
@@ -208,19 +183,18 @@ pub trait ExpressionExtension: GetInnerExpression {
 	fn travel_positions<F: FnMut(&Self, &ExprPosition)>(&self, f: F);
 	fn get_pattern_names(&self) -> BTreeSet<String>;
 	fn get_anyfunction_names(&self) -> BTreeSet<AnyFunctionNames>;
-	fn retype<Y, T, FD, FS>(self, destructure: &FD, structure: &FS) -> T where 
-		T: GetInnerExpression, 
-		FD: Fn(Self) -> (Y, ExpressionMeta<Self>), 
+	fn retype<Y, T, FD, FS>(self, destructure: &FD, structure: &FS) -> T
+	where
+		T: GetInnerExpression,
+		FD: Fn(Self) -> (Y, ExpressionMeta<Self>),
 		FS: Fn(Y, ExpressionMeta<T>) -> T;
 }
 
-impl<Arg> ExpressionExtension for Arg where
-	Arg: GetInnerExpression + detail::ExpressionExtensionInner,
+impl<Arg> ExpressionExtension for Arg
+where Arg: GetInnerExpression + detail::ExpressionExtensionInner
 {
-	/// Получить ссылку на внутреннюю часть выражения. 
-	fn get<'a>(&'a self, position: &ExprPosition) -> Result<&'a Self, PositionError> {
-		self.get_inner(position, 0)
-	}
+	/// Получить ссылку на внутреннюю часть выражения.
+	fn get<'a>(&'a self, position: &ExprPosition) -> Result<&'a Self, PositionError> { self.get_inner(position, 0) }
 
 	/// Получить изменяемую ссылку на внутреннюю часть выражения.
 	fn get_mut<'a>(&'a mut self, position: &ExprPosition) -> Result<&'a mut Self, PositionError> {
@@ -234,14 +208,11 @@ impl<Arg> ExpressionExtension for Arg where
 		f(self);
 
 		match self.get_inner_expression_ref() {
-			AnyFunction { name: _, args } |
-			NamedFunction { name: _, args } => args.iter().for_each(|arg| {
+			AnyFunction { name: _, args } | NamedFunction { name: _, args } => args.iter().for_each(|arg| {
 				arg.travel(f);
 			}),
 
-			Pattern { name: _ } |
-			NamedValue { name: _ } |
-			IntegerValue { value: _ } => (),
+			Pattern { name: _ } | NamedValue { name: _ } | IntegerValue { value: _ } => {},
 		}
 	}
 
@@ -252,14 +223,11 @@ impl<Arg> ExpressionExtension for Arg where
 		f(self);
 
 		match self.get_inner_expression_mut() {
-			AnyFunction { name: _, args } |
-			NamedFunction { name: _, args } => args.iter_mut().for_each(|arg| {
+			AnyFunction { name: _, args } | NamedFunction { name: _, args } => args.iter_mut().for_each(|arg| {
 				arg.travel_mut(f);
 			}),
 
-			Pattern { name: _ } |
-			NamedValue { name: _ } |
-			IntegerValue { value: _ } => (),
+			Pattern { name: _ } | NamedValue { name: _ } | IntegerValue { value: _ } => {},
 		}
 	}
 
@@ -291,18 +259,21 @@ impl<Arg> ExpressionExtension for Arg where
 		result
 	}
 
-	fn retype<Y, T, FD, FS>(self, destructure: &FD, structure: &FS) -> T where 
-		T: GetInnerExpression, 
-		FD: Fn(Self) -> (Y, ExpressionMeta<Self>), 
+	fn retype<Y, T, FD, FS>(self, destructure: &FD, structure: &FS) -> T
+	where
+		T: GetInnerExpression,
+		FD: Fn(Self) -> (Y, ExpressionMeta<Self>),
 		FS: Fn(Y, ExpressionMeta<T>) -> T,
-	{	
+	{
 		use ExpressionMeta::*;
 		let (y, expr) = destructure(self);
 		structure(y, match expr {
-			AnyFunction { name, args } => 
-				AnyFunction { name, args: args.into_iter().map(|x| x.retype(destructure, structure)).collect() },
-			NamedFunction { name, args } =>
-				NamedFunction { name, args: args.into_iter().map(|x| x.retype(destructure, structure)).collect() },
+			AnyFunction { name, args } => {
+				AnyFunction { name, args: args.into_iter().map(|x| x.retype(destructure, structure)).collect() }
+			},
+			NamedFunction { name, args } => {
+				NamedFunction { name, args: args.into_iter().map(|x| x.retype(destructure, structure)).collect() }
+			},
 			Pattern { name } => Pattern { name },
 			NamedValue { name } => NamedValue { name },
 			IntegerValue { value } => IntegerValue { value },
@@ -317,24 +288,23 @@ pub struct AnyFunctionNames {
 }
 
 impl fmt::Display for AnyFunctionNames {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    	write!(f, "{}{{{}}}", self.name, self.arguments_count)
-    }
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { write!(f, "{}{{{}}}", self.name, self.arguments_count) }
 }
 
 impl fmt::Display for Expression {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		use ExpressionMeta::*;
-    	match &self.0 {
+		match &self.0 {
 			AnyFunction { name, args } => write!(f, "${}({})", name, args.iter().joined_by(", ")),
 			NamedFunction { name, args } => match &name[..] {
-				"+" | "-" | "*" | "/" | "!=" | "=" | "<" | ">" | "<=" | ">=" | "|" | "&" 
-					=> write!(f, "({})", args.iter().joined_by(name)),
+				"+" | "-" | "*" | "/" | "!=" | "=" | "<" | ">" | "<=" | ">=" | "|" | "&" => {
+					write!(f, "({})", args.iter().joined_by(name))
+				},
 				_ => write!(f, "{}({})", name, args.iter().joined_by(", ")),
-			}
+			},
 			Pattern { name } => write!(f, "{}", name),
 			NamedValue { name } => write!(f, "${}", name),
 			IntegerValue { value } => write!(f, "{}", value),
-    	}
-    }
+		}
+	}
 }

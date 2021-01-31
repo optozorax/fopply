@@ -1,21 +1,17 @@
-use crate::expr::PositionError;
-use crate::expr::ExprPositionOwned;
-use crate::utils::span::*;
-use crate::parsing::Proof;
-use crate::binding::FormulaError;
-use crate::parsing::process_expression_parsing;
-use crate::utils::char_index::get_char_range;
-use std::collections::BTreeSet;
-use crate::binding::find_bindings;
-use crate::binding::apply_bindings;
-use std::collections::BTreeMap;
-use crate::binding::{Formula, BindingStorage, ManualAnyFunctionBinding};
-use crate::parsing::{clear_parsing_info, Math, NamedFormulas, ProofStep};
-use petgraph::{Graph, graph::NodeIndex};
-use crate::utils::id::*;
-use std::borrow::Borrow;
-use crate::expr::{ExpressionMeta, ExpressionExtension, Expression};
+use std::{
+	borrow::Borrow,
+	collections::{BTreeMap, BTreeSet},
+};
+
+use petgraph::{graph::NodeIndex, Graph};
 use thiserror::Error;
+
+use crate::{
+	binding::{apply_bindings, find_bindings, BindingStorage, Formula, FormulaError, ManualAnyFunctionBinding},
+	expr::{ExprPositionOwned, Expression, ExpressionExtension, ExpressionMeta, PositionError},
+	parsing::{clear_parsing_info, process_expression_parsing, Math, NamedFormulas, Proof, ProofStep},
+	utils::{char_index::get_char_range, id::*, span::*},
+};
 
 #[derive(Default, Ord, PartialOrd, Debug, Clone, Eq, PartialEq, Hash)]
 pub struct FormulaPosition {
@@ -26,9 +22,7 @@ pub struct FormulaPosition {
 #[derive(Debug, Error)]
 pub enum ReadMathError {
 	#[error("wrong number, should be {should_be}")]
-	WrongNumberInStart {
-		should_be: usize,
-	},
+	WrongNumberInStart { should_be: usize },
 	#[error("{0}")]
 	FormulaError(FormulaError),
 }
@@ -39,36 +33,30 @@ pub fn read_math(math: &Math) -> Result<BTreeMap<FormulaPosition, Formula>, Vec<
 	for NamedFormulas { name, formulas } in &math.0 {
 		for (index, formula) in formulas.iter().enumerate() {
 			if index + 1 != formula.position.inner as usize {
-				errors.push(Spanned::new(ReadMathError::WrongNumberInStart {
-					should_be: index+1,
-				}, formula.position.span.clone()));
+				errors.push(Spanned::new(
+					ReadMathError::WrongNumberInStart { should_be: index + 1 },
+					formula.position.span.clone(),
+				));
 				continue;
 			}
 
-			let position = FormulaPosition {
-				module_name: name.clone(),
-				position: formula.position.inner as usize
-			};
+			let position = FormulaPosition { module_name: name.clone(), position: formula.position.inner as usize };
 
 			let formula = match Formula::new(
 				clear_parsing_info(formula.formula.inner.left.clone()),
-				clear_parsing_info(formula.formula.inner.right.clone())
+				clear_parsing_info(formula.formula.inner.right.clone()),
 			) {
 				Ok(x) => x,
 				Err(x) => {
 					errors.push(Spanned::new(ReadMathError::FormulaError(x), formula.formula.span.clone()));
 					continue;
-				}
+				},
 			};
 
 			result.insert(position, formula);
-		} 
+		}
 	}
-	if errors.len() == 0 {
-		Ok(result)
-	} else {
-		Err(errors)
-	}
+	if errors.len() == 0 { Ok(result) } else { Err(errors) }
 }
 
 pub fn proofs_has_cycles(math: &Math) -> Result<(), &'static str> {
@@ -76,10 +64,9 @@ pub fn proofs_has_cycles(math: &Math) -> Result<(), &'static str> {
 	let mut edges = vec![];
 	for NamedFormulas { name, formulas } in &math.0 {
 		for (index, formula) in formulas.iter().enumerate() {
-			let current_position = NodeIndex::new(id_generator.get_or_add_id(FormulaPosition {
-				module_name: name.clone(),
-				position: index + 1,
-			}) as usize);
+			let current_position = NodeIndex::new(
+				id_generator.get_or_add_id(FormulaPosition { module_name: name.clone(), position: index + 1 }) as usize,
+			);
 			if let Some(proof) = &formula.proof {
 				for ProofStep { used_formula, .. } in &proof.inner.steps {
 					let used_position = NodeIndex::new(id_generator.get_or_add_id(FormulaPosition {
@@ -93,11 +80,7 @@ pub fn proofs_has_cycles(math: &Math) -> Result<(), &'static str> {
 	}
 
 	let graph = Graph::<(), ()>::from_edges(&edges);
-	if petgraph::algo::is_cyclic_directed(&graph) {
-		Err("proof has cycles")
-	} else {
-		Ok(())
-	}
+	if petgraph::algo::is_cyclic_directed(&graph) { Err("proof has cycles") } else { Ok(()) }
 }
 
 #[derive(Debug, Error)]
@@ -105,13 +88,9 @@ pub enum ProofError {
 	#[error("position is not found")]
 	PositionNotFound,
 	#[error("result of this step is not equal to expected, actual is {actual}")]
-	StepWrong {
-		actual: Expression,
-	},
+	StepWrong { actual: Expression },
 	#[error("result of latest step is not equal to right side of formula, actual is {actual}")]
-	LatestStepWrong {
-		actual: Expression,
-	},
+	LatestStepWrong { actual: Expression },
 	#[error("formula by this name is not found")]
 	FormulaNotFound,
 	#[error("not all bindings provided")]
@@ -127,7 +106,11 @@ pub enum ProofError {
 	CannotFindBindings,
 }
 
-pub fn is_proof_correct(formula: &crate::parsing::Formula, proof: &Spanned<Proof>, global_formulas: &BTreeMap<FormulaPosition, Formula>) -> Result<(), Spanned<ProofError>> {
+pub fn is_proof_correct(
+	formula: &crate::parsing::Formula,
+	proof: &Spanned<Proof>,
+	global_formulas: &BTreeMap<FormulaPosition, Formula>,
+) -> Result<(), Spanned<ProofError>> {
 	let mut current = clear_parsing_info(formula.left.clone());
 
 	for ProofStep { string, expr, position, used_formula, bindings, function_bindings } in &proof.inner.steps {
@@ -135,8 +118,16 @@ pub fn is_proof_correct(formula: &crate::parsing::Formula, proof: &Spanned<Proof
 		let expr_span = expr.span.clone();
 		let (mut expr, position) = {
 			let (expr, positions) = process_expression_parsing(expr.inner.clone());
-			let position = positions.iter()
-				.find(|(_, range)| get_char_range(&string, range.0.clone()).map(|x| x == position.inner).unwrap_or(false)).ok_or(Spanned::new(ProofError::PositionNotFound, position.span.clone()))?.0.clone();
+			let position = positions
+				.iter()
+				.find(|(_, range)| {
+					get_char_range(&string, range.0.clone())
+						.map(|x| x == position.inner)
+						.unwrap_or(false)
+				})
+				.ok_or(Spanned::new(ProofError::PositionNotFound, position.span.clone()))?
+				.0
+				.clone();
 			(expr, position)
 		};
 
@@ -149,7 +140,10 @@ pub fn is_proof_correct(formula: &crate::parsing::Formula, proof: &Spanned<Proof
 				module_name: used_formula.inner.module_name.clone(),
 				position: used_formula.inner.position,
 			};
-			let mut result = global_formulas.get(&formula_position).ok_or(Spanned::new(ProofError::FormulaNotFound, used_formula.span.clone()))?.clone();
+			let mut result = global_formulas
+				.get(&formula_position)
+				.ok_or(Spanned::new(ProofError::FormulaNotFound, used_formula.span.clone()))?
+				.clone();
 			if !used_formula.inner.left_to_right {
 				std::mem::swap(&mut result.left, &mut result.right);
 			}
@@ -160,17 +154,32 @@ pub fn is_proof_correct(formula: &crate::parsing::Formula, proof: &Spanned<Proof
 				return Err(Spanned::new(ProofError::NotAllBindingsProvided, bindings.span.clone()));
 			}
 
-			let sorted_unknown_anyfunctions: BTreeSet<(String, usize)> = result.left.anyfunction_names.iter().cloned().collect();
-			let sorted_function_bindings: BTreeSet<(String, usize)> = function_bindings.inner.iter().map(|(name, pattern)| (name.clone(), pattern.variables.len())).collect();
+			let sorted_unknown_anyfunctions: BTreeSet<(String, usize)> =
+				result.left.anyfunction_names.iter().cloned().collect();
+			let sorted_function_bindings: BTreeSet<(String, usize)> = function_bindings
+				.inner
+				.iter()
+				.map(|(name, pattern)| (name.clone(), pattern.variables.len()))
+				.collect();
 			if sorted_unknown_anyfunctions != sorted_function_bindings {
 				return Err(Spanned::new(ProofError::NotAllFunctionBindingsProvided, function_bindings.span.clone()));
 			}
 
 			result
-		};					
+		};
 
 		let mut current_expr_part = Expression(ExpressionMeta::IntegerValue { value: 0 });
-		let current_expr = expr.get_mut(position.borrow()).map_err(|pos| Spanned::new(ProofError::InternalError { position: position.clone(), error_in: pos }, expr_parsing.get(position.cut_to_error(pos)).unwrap().span.clone().globalize_span(expr_span.0.start)))?;
+		let current_expr = expr.get_mut(position.borrow()).map_err(|pos| {
+			Spanned::new(
+				ProofError::InternalError { position: position.clone(), error_in: pos },
+				expr_parsing
+					.get(position.cut_to_error(pos))
+					.unwrap()
+					.span
+					.clone()
+					.globalize_span(expr_span.0.start),
+			)
+		})?;
 		std::mem::swap(&mut current_expr_part, current_expr);
 
 		let mut bindings = {
@@ -180,7 +189,7 @@ pub fn is_proof_correct(formula: &crate::parsing::Formula, proof: &Spanned<Proof
 			}
 			result
 		};
-		
+
 		let mut any_function_bindings = {
 			let mut binding_map = BTreeMap::new();
 			for binding in &function_bindings.inner {
@@ -190,17 +199,9 @@ pub fn is_proof_correct(formula: &crate::parsing::Formula, proof: &Spanned<Proof
 			ManualAnyFunctionBinding::new(binding_map)
 		};
 
-		find_bindings(
-			current_expr_part, 
-			&formula.left.pattern,
-			&mut bindings,
-			&mut any_function_bindings
-		).ok_or(Spanned::new(ProofError::CannotFindBindings, expr_span.clone()))?;
-		let mut current_expr_part = apply_bindings(
-			formula.right.pattern.clone(),
-			&bindings,
-			&any_function_bindings
-		);
+		find_bindings(current_expr_part, &formula.left.pattern, &mut bindings, &mut any_function_bindings)
+			.ok_or(Spanned::new(ProofError::CannotFindBindings, expr_span.clone()))?;
+		let mut current_expr_part = apply_bindings(formula.right.pattern.clone(), &bindings, &any_function_bindings);
 
 		std::mem::swap(&mut current_expr_part, current_expr);
 
@@ -215,7 +216,10 @@ pub fn is_proof_correct(formula: &crate::parsing::Formula, proof: &Spanned<Proof
 	Ok(())
 }
 
-pub fn is_proofs_correct(math: &Math, global_formulas: &BTreeMap<FormulaPosition, Formula>) -> Result<(), Vec<Spanned<ProofError>>> {
+pub fn is_proofs_correct(
+	math: &Math,
+	global_formulas: &BTreeMap<FormulaPosition, Formula>,
+) -> Result<(), Vec<Spanned<ProofError>>> {
 	let mut result = Vec::new();
 	for NamedFormulas { name: _, formulas } in &math.0 {
 		for formula in formulas {
@@ -227,9 +231,5 @@ pub fn is_proofs_correct(math: &Math, global_formulas: &BTreeMap<FormulaPosition
 		}
 	}
 
-	if result.is_empty() {
-		Ok(())
-	} else {
-		Err(result)
-	}
+	if result.is_empty() { Ok(()) } else { Err(result) }
 }

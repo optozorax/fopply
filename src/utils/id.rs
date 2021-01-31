@@ -12,20 +12,14 @@ impl<T: Hash + Eq> IdGenerator<T> {
 		let storage = &mut self.storage;
 		let counter = &mut self.counter;
 		*storage.entry(key).or_insert_with(|| {
-			*counter += 1; 
+			*counter += 1;
 			*counter
 		})
 	}
 
-	pub fn get_id(&self, key: &T) -> Option<u32> {
-		self.storage.get(key).cloned()
-	}
+	pub fn get_id(&self, key: &T) -> Option<u32> { self.storage.get(key).cloned() }
 
-	pub fn get_key(&self, value: u32) -> Option<&T> {
-		self.storage.iter().find(|(_, v)| **v == value).map(|(k, _)| k)
-	}
+	pub fn get_key(&self, value: u32) -> Option<&T> { self.storage.iter().find(|(_, v)| **v == value).map(|(k, _)| k) }
 
-	pub fn get_hash_map(&self) -> &HashMap<T, u32> {
-		&self.storage
-	}
+	pub fn get_hash_map(&self) -> &HashMap<T, u32> { &self.storage }
 }

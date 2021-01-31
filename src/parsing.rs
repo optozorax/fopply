@@ -1,10 +1,10 @@
 use std::ops::Range;
-use crate::utils::span::*;
 
-use crate::expr::*;
-use crate::binding::{Binding, AnyFunctionPattern};
-use crate::utils::char_index::*;
-use crate::utils::apply::*;
+use crate::{
+	binding::{AnyFunctionPattern, Binding},
+	expr::*,
+	utils::{apply::*, char_index::*, span::*},
+};
 
 #[derive(Debug)]
 pub struct FormulaPosition {
@@ -27,13 +27,17 @@ pub struct ExpressionParsing {
 
 impl GetInnerExpression for ExpressionParsingGlobal {
 	fn get_inner_expression(self) -> ExpressionMeta<Self> { self.node }
+
 	fn get_inner_expression_ref(&self) -> &ExpressionMeta<Self> { &self.node }
+
 	fn get_inner_expression_mut(&mut self) -> &mut ExpressionMeta<Self> { &mut self.node }
 }
 
 impl GetInnerExpression for ExpressionParsing {
 	fn get_inner_expression(self) -> ExpressionMeta<Self> { self.node }
+
 	fn get_inner_expression_ref(&self) -> &ExpressionMeta<Self> { &self.node }
+
 	fn get_inner_expression_mut(&mut self) -> &mut ExpressionMeta<Self> { &mut self.node }
 }
 
@@ -82,7 +86,7 @@ peg::parser!(
 				Math(named_formulas)
 			}
 
-		pub rule named_formulas() -> NamedFormulas 
+		pub rule named_formulas() -> NamedFormulas
 			= "[" name:identifier() "]" _ formulas:(formulas:full_formula() _ { formulas })+ {
 				NamedFormulas {
 					name,
@@ -91,8 +95,8 @@ peg::parser!(
 			}
 
 		pub rule full_formula() -> FullFormula
-			= start:position!() position:integer() end:position!()  "." _ 
-			  start2:position!() formula:formula() end2:position!() _ 
+			= start:position!() position:integer() end:position!()  "." _
+			  start2:position!() formula:formula() end2:position!() _
 			  start3:position!() proof:proof()? end3:position!() _ ";" {
 				FullFormula {
 					position: Spanned {
@@ -118,10 +122,10 @@ peg::parser!(
 			}
 
 		pub rule proof_step() -> ProofStep
-			= start1:position!() expr:&expr_normalized() string:$(expr_normalized()) end1:position!() _ ";" _ 
-			  start2:position!() position:visual_positon() end2:position!() _ 
-			  start3:position!() used_formula:formula_position() end3:position!() _ 
-			  start4:position!() bindings:binding() ** (_ "," _ ) end4:position!() _ 
+			= start1:position!() expr:&expr_normalized() string:$(expr_normalized()) end1:position!() _ ";" _
+			  start2:position!() position:visual_positon() end2:position!() _
+			  start3:position!() used_formula:formula_position() end3:position!() _
+			  start4:position!() bindings:binding() ** (_ "," _ ) end4:position!() _
 			  start5:position!() function_bindings:function_binding() ** (_ "," _ ) end5:position!() _ ";" {
 				ProofStep {
 					string: string.to_string(),
@@ -150,9 +154,9 @@ peg::parser!(
 
 		pub rule formula() -> Formula
 			= left:expr_normalized() _ "<->" _ right:expr_normalized() {
-				Formula { 
-					left, 
-					right 
+				Formula {
+					left,
+					right
 				}
 			}
 
@@ -191,10 +195,10 @@ peg::parser!(
 			= or()
 
 		rule or() -> ExpressionParsingGlobal
-			= start:position!() 
-			  l:and() 
-			  r:(_ z:$("|") _ r:and() end:position!()  { (z, r, end) })* 
-			  end:position!() 
+			= start:position!()
+			  l:and()
+			  r:(_ z:$("|") _ r:and() end:position!()  { (z, r, end) })*
+			  end:position!()
 			{
 				let mut result = l;
 				for (z, r, end) in r {
@@ -207,10 +211,10 @@ peg::parser!(
 			}
 
 		rule and() -> ExpressionParsingGlobal
-			= start:position!() 
-			  l:equality() 
-			  r:(_ z:$("&") _ r:equality() end:position!()  { (z, r, end) })* 
-			  end:position!() 
+			= start:position!()
+			  l:equality()
+			  r:(_ z:$("&") _ r:equality() end:position!()  { (z, r, end) })*
+			  end:position!()
 			{
 				let mut result = l;
 				for (z, r, end) in r {
@@ -223,10 +227,10 @@ peg::parser!(
 			}
 
 		rule equality() -> ExpressionParsingGlobal
-			= start:position!() 
-			  l:sum() 
-			  r:(_ z:$("="/"!="/">="/"<="/">"/"<") _ p:sum() { (z, p) })? 
-			  end:position!() 
+			= start:position!()
+			  l:sum()
+			  r:(_ z:$("="/"!="/">="/"<="/">"/"<") _ p:sum() { (z, p) })?
+			  end:position!()
 			{
 				match r {
 					Some((z, p)) => ExpressionParsingGlobal {
@@ -238,9 +242,9 @@ peg::parser!(
 			}
 
 		rule sum() -> ExpressionParsingGlobal
-			= start:position!() 
-			  l:product() 
-			  r:(_ z:$("+"/"-") _ r:product() end:position!()  { (z, r, end) })* 
+			= start:position!()
+			  l:product()
+			  r:(_ z:$("+"/"-") _ r:product() end:position!()  { (z, r, end) })*
 			{
 				let mut result = l;
 				for (z, r, end) in r {
@@ -259,10 +263,10 @@ peg::parser!(
 			}
 
 		rule product() -> ExpressionParsingGlobal
-			= start:position!() 
-			  l:power() 
-			  r:(_ z:$("*"/"/") _ r:power() end:position!()  { (z, r, end) })* 
-			  end:position!() 
+			= start:position!()
+			  l:power()
+			  r:(_ z:$("*"/"/") _ r:power() end:position!()  { (z, r, end) })*
+			  end:position!()
 			{
 				let mut result = l;
 				for (z, r, end) in r {
@@ -275,10 +279,10 @@ peg::parser!(
 			}
 
 		rule power() -> ExpressionParsingGlobal
-			= start:position!() 
+			= start:position!()
 			  l:atom()
-			  r:(_ z:$("^") _ p:power() { (z, p) })? 
-			  end:position!() 
+			  r:(_ z:$("^") _ p:power() { (z, p) })?
+			  end:position!()
 			{
 				match r {
 					Some((z, p)) => ExpressionParsingGlobal {
@@ -301,15 +305,15 @@ peg::parser!(
 			/ integer_value()
 
 		rule pattern() -> ExpressionParsingGlobal
-			= start:position!() name:identifier() end:position!() { 
+			= start:position!() name:identifier() end:position!() {
 				ExpressionParsingGlobal {
 					span: GlobalSpan(start..end),
-					node: ExpressionMeta::Pattern { name } 
+					node: ExpressionMeta::Pattern { name }
 				}
 			}
 
 		rule function() -> ExpressionParsingGlobal
-			= start:position!() name:identifier() "(" _ args:expr() ** (_ "," _) _ ")" end:position!() { 
+			= start:position!() name:identifier() "(" _ args:expr() ** (_ "," _) _ ")" end:position!() {
 				ExpressionParsingGlobal {
 					span: GlobalSpan(start..end),
 					node: ExpressionMeta::NamedFunction { name, args }
@@ -317,7 +321,7 @@ peg::parser!(
 			}
 
 		rule any_function() -> ExpressionParsingGlobal
-			= start:position!() "$" name:identifier() "(" _ args:expr() ** (_ "," _) _ ")" end:position!() { 
+			= start:position!() "$" name:identifier() "(" _ args:expr() ** (_ "," _) _ ")" end:position!() {
 				ExpressionParsingGlobal {
 					span: GlobalSpan(start..end),
 					node: ExpressionMeta::AnyFunction { name, args }
@@ -325,7 +329,7 @@ peg::parser!(
 			}
 
 		rule integer_value() -> ExpressionParsingGlobal
-			= start:position!() value:integer() end:position!() { 
+			= start:position!() value:integer() end:position!() {
 				ExpressionParsingGlobal {
 					span: GlobalSpan(start..end),
 					node: ExpressionMeta::IntegerValue { value: value as i64 }
@@ -333,7 +337,7 @@ peg::parser!(
 			}
 
 		rule named_value() -> ExpressionParsingGlobal
-			= start:position!() "$" name:identifier() end:position!() { 
+			= start:position!() "$" name:identifier() end:position!() {
 				ExpressionParsingGlobal {
 					span: GlobalSpan(start..end),
 					node: ExpressionMeta::NamedValue { name }
@@ -343,7 +347,7 @@ peg::parser!(
 		rule integer() -> u64
 			= n:$(['0'..='9']+) {? n.parse().map_err(|_| "number is too big") }
 
-		rule identifier() -> String 
+		rule identifier() -> String
 			= n:$(['a'..='z' | 'A'..='Z' | '_'] ['a'..='z' | 'A'..='Z' | '_' | '0'..='9']*) {
 				String::from(n)
 			}
@@ -353,58 +357,42 @@ peg::parser!(
 );
 
 pub fn localize_span(start: usize, expr: ExpressionParsingGlobal) -> ExpressionParsing {
-	expr.retype(
-		&|expr| (expr.span.localize_span(start), expr.node), 
-		&|span, node| ExpressionParsing { span, node }
-	)
+	expr.retype(&|expr| (expr.span.localize_span(start), expr.node), &|span, node| ExpressionParsing { span, node })
 }
 
 pub fn clear_parsing_info(expr: ExpressionParsing) -> Expression {
-	expr.retype(
-		&|expr| ((), expr.node), 
-		&|(), node| Expression(node)
-	)
+	expr.retype(&|expr| ((), expr.node), &|(), node| Expression(node))
 }
 
 pub fn process_expression_parsing(expr: ExpressionParsing) -> (Expression, Vec<(ExprPositionOwned, LocalSpan)>) {
 	fn process(
-		expr: ExpressionMeta<ExpressionParsing>, 
-		current_position: &mut ExprPositionOwned, 
-		storage: &mut Vec<(ExprPositionOwned, LocalSpan)>
+		expr: ExpressionMeta<ExpressionParsing>,
+		current_position: &mut ExprPositionOwned,
+		storage: &mut Vec<(ExprPositionOwned, LocalSpan)>,
 	) -> Expression {
 		use ExpressionMeta::*;
 
 		let mut process_args = |args: Vec<ExpressionParsing>| {
-			args.into_iter().enumerate().map(|(pos, arg)| {
-				current_position.0.push(pos);
-				let ExpressionParsing { span, node } = arg;
-				storage.push((current_position.clone(), span));
-				let result = process(node, current_position, storage);
-				current_position.0.pop().unwrap();
-				result
-			}).collect()
+			args.into_iter()
+				.enumerate()
+				.map(|(pos, arg)| {
+					current_position.0.push(pos);
+					let ExpressionParsing { span, node } = arg;
+					storage.push((current_position.clone(), span));
+					let result = process(node, current_position, storage);
+					current_position.0.pop().unwrap();
+					result
+				})
+				.collect()
 		};
 
-		Expression(
-			match expr {
-				AnyFunction { name, args } => 
-					AnyFunction { 
-						name, 
-						args: process_args(args),
-					},
-				NamedFunction { name, args } =>
-					NamedFunction { 
-						name, 
-						args: process_args(args),
-					},
-				Pattern { name } => 
-					Pattern { name },
-				NamedValue { name } => 
-					NamedValue { name },
-				IntegerValue { value } => 
-					IntegerValue { value },
-			}
-		)
+		Expression(match expr {
+			AnyFunction { name, args } => AnyFunction { name, args: process_args(args) },
+			NamedFunction { name, args } => NamedFunction { name, args: process_args(args) },
+			Pattern { name } => Pattern { name },
+			NamedValue { name } => NamedValue { name },
+			IntegerValue { value } => IntegerValue { value },
+		})
 	}
 
 	let mut storage = Vec::new();

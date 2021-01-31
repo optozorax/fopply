@@ -1,9 +1,11 @@
-use std::collections::BTreeSet;
-use crate::expr::*;
-use crate::utils::apply::*;
-use crate::utils::joined_by::*;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
+
 use thiserror::Error;
+
+use crate::{
+	expr::*,
+	utils::{apply::*, joined_by::*},
+};
 
 /// Одна часть в формуле `formula_part <-> ...`.
 #[derive(Clone, Debug)]
@@ -15,7 +17,9 @@ pub struct FormulaPart {
 
 #[derive(Debug, Error)]
 pub enum FormulaError {
-	#[error("wrong count of arguments in anyfunctions: in function `{name}`, should be {should_be}, but {actual} is presented")]
+	#[error(
+		"wrong count of arguments in anyfunctions: in function `{name}`, should be {should_be}, but {actual} is presented"
+	)]
 	WrongCountOfArgumentsInAnyFunctions {
 		name: String,
 		should_be: usize,
@@ -25,7 +29,7 @@ pub enum FormulaError {
 	NotEqualAnyfunctions {
 		left_side: Vec<AnyFunctionNames>,
 		right_side: Vec<AnyFunctionNames>,
-	}
+	},
 }
 
 impl Formula {
@@ -45,16 +49,18 @@ impl Formula {
 				use std::collections::btree_map::Entry::*;
 
 				match arg_count.entry(name.clone()) {
-					Vacant(vacant) => { vacant.insert(arguments_count); },
+					Vacant(vacant) => {
+						vacant.insert(arguments_count);
+					},
 					Occupied(occupied) => {
 						if *occupied.get() != arguments_count {
 							return Err(FormulaError::WrongCountOfArgumentsInAnyFunctions {
 								name: name.to_string(),
-								should_be: *occupied.get(), 
+								should_be: *occupied.get(),
 								actual: arguments_count,
 							});
 						}
-					}
+					},
 				}
 			}
 			Ok(arg_count)
@@ -66,28 +72,32 @@ impl Formula {
 
 		// Проверяем с обоих сторон одинаковые имена
 		if left_anyfunctions != right_anyfunctions {
-			let left_anyfunctions = left_anyfunctions.into_iter().map(|x| AnyFunctionNames { name: x.0, arguments_count: x.1 }).collect::<BTreeSet<_>>();
-			let right_anyfunctions = right_anyfunctions.into_iter().map(|x| AnyFunctionNames { name: x.0, arguments_count: x.1 }).collect::<BTreeSet<_>>();
+			let left_anyfunctions = left_anyfunctions
+				.into_iter()
+				.map(|x| AnyFunctionNames { name: x.0, arguments_count: x.1 })
+				.collect::<BTreeSet<_>>();
+			let right_anyfunctions = right_anyfunctions
+				.into_iter()
+				.map(|x| AnyFunctionNames { name: x.0, arguments_count: x.1 })
+				.collect::<BTreeSet<_>>();
 			return Err(FormulaError::NotEqualAnyfunctions {
 				left_side: left_anyfunctions.difference(&right_anyfunctions).cloned().collect(),
 				right_side: right_anyfunctions.difference(&left_anyfunctions).cloned().collect(),
 			});
 		}
 
-		Ok(
-			Formula {
-				left: FormulaPart {
-					pattern: left,
-					unknown_patterns_names: left_unknown_patterns,
-					anyfunction_names: left_anyfunctions.into_iter().collect(),
-				},
-				right: FormulaPart {
-					pattern: right,
-					unknown_patterns_names: right_unknown_patterns,
-					anyfunction_names: right_anyfunctions.into_iter().collect(),
-				}
-			}
-		)
+		Ok(Formula {
+			left: FormulaPart {
+				pattern: left,
+				unknown_patterns_names: left_unknown_patterns,
+				anyfunction_names: left_anyfunctions.into_iter().collect(),
+			},
+			right: FormulaPart {
+				pattern: right,
+				unknown_patterns_names: right_unknown_patterns,
+				anyfunction_names: right_anyfunctions.into_iter().collect(),
+			},
+		})
 	}
 }
 
@@ -106,12 +116,7 @@ pub struct Binding {
 }
 
 impl Binding {
-	pub fn new(pattern_name: String, to_value: Expression) -> Binding {
-		Binding {
-			pattern_name,
-			to_value,
-		}
-	}
+	pub fn new(pattern_name: String, to_value: Expression) -> Binding { Binding { pattern_name, to_value } }
 }
 
 #[derive(Default, Debug, Clone)]
@@ -140,66 +145,56 @@ impl BindingStorage {
 
 pub trait AnyFunctionBinding {
 	fn find_bindings(
-		&mut self, 
-		any_function_name: &str, 
-		args: &[Expression], 
+		&mut self,
+		any_function_name: &str,
+		args: &[Expression],
 		expr: Expression,
-		binding_storage: &mut BindingStorage
+		binding_storage: &mut BindingStorage,
 	) -> Option<()>;
 
 	fn apply_bindings(
-		&self, 
-		any_function_name: &str, 
+		&self,
+		any_function_name: &str,
 		args: Vec<Expression>,
-		binding_storage: &BindingStorage
+		binding_storage: &BindingStorage,
 	) -> Option<Expression>;
 }
 
 pub fn find_bindings<A: AnyFunctionBinding>(
-	expr: Expression, 
-	by: &Expression, 
+	expr: Expression,
+	by: &Expression,
 	binding_storage: &mut BindingStorage,
 	any_function_binding: &mut A,
 ) -> Option<()> {
 	use ExpressionMeta::*;
 
 	match &by.0 {
-		Pattern { name } => {
-			binding_storage.add(Binding::new(name.to_string(), expr))
-		},
-		AnyFunction { name, args } => {
-			any_function_binding.find_bindings(&name, &args, expr, binding_storage)
-		},
-		NamedFunction { name, args } => {
-			match expr.0 {
-				NamedFunction { name: name_expr, args: args_expr } 
-					if *name == name_expr && args.len() == args_expr.len()
-				=> {
-					for (arg_expr, arg_by) in args_expr.into_iter().zip(args.iter()) {
-						find_bindings(arg_expr, &arg_by, binding_storage, any_function_binding)?;
-					}
-					Some(())
-				},
-				_ => None,
+		Pattern { name } => binding_storage.add(Binding::new(name.to_string(), expr)),
+		AnyFunction { name, args } => any_function_binding.find_bindings(&name, &args, expr, binding_storage),
+		NamedFunction { name, args } => match expr.0 {
+			NamedFunction { name: name_expr, args: args_expr }
+				if *name == name_expr && args.len() == args_expr.len() =>
+			{
+				for (arg_expr, arg_by) in args_expr.into_iter().zip(args.iter()) {
+					find_bindings(arg_expr, &arg_by, binding_storage, any_function_binding)?;
+				}
+				Some(())
 			}
+			_ => None,
 		},
-		NamedValue { name } => {
-			match expr.0 {
-				NamedValue { name: expr_name } if *name == expr_name => Some(()),
-				_ => None,
-			}
+		NamedValue { name } => match expr.0 {
+			NamedValue { name: expr_name } if *name == expr_name => Some(()),
+			_ => None,
 		},
-		IntegerValue { value } => {
-			match expr.0 {
-				IntegerValue { value: expr_value } if *value == expr_value => Some(()),
-				_ => None,
-			}
+		IntegerValue { value } => match expr.0 {
+			IntegerValue { value: expr_value } if *value == expr_value => Some(()),
+			_ => None,
 		},
 	}
 }
 
-pub fn apply_bindings<A: AnyFunctionBinding<>>(
-	expr: Expression, 
+pub fn apply_bindings<A: AnyFunctionBinding>(
+	expr: Expression,
 	binding_storage: &BindingStorage,
 	any_function_binding: &A,
 ) -> Expression {
@@ -210,23 +205,20 @@ pub fn apply_bindings<A: AnyFunctionBinding<>>(
 			if let Some(found) = binding_storage.0.get(&name) {
 				found.clone()
 			} else {
-				Pattern { name }
-				.apply(Expression)
+				Pattern { name }.apply(Expression)
 			}
 		},
-		AnyFunction { name, args } => {
-			any_function_binding.apply_bindings(&name, args, binding_storage).unwrap()
-		},
-		NamedFunction { name, args } => {
-			NamedFunction { 
-				name, 
-				args: args
-					.into_iter()
-					.map(|arg| apply_bindings(arg, binding_storage, any_function_binding))
-					.collect()
-			}
-			.apply(Expression)
-		},
+		AnyFunction { name, args } => any_function_binding
+			.apply_bindings(&name, args, binding_storage)
+			.unwrap(),
+		NamedFunction { name, args } => NamedFunction {
+			name,
+			args: args
+				.into_iter()
+				.map(|arg| apply_bindings(arg, binding_storage, any_function_binding))
+				.collect(),
+		}
+		.apply(Expression),
 		NamedValue { name } => NamedValue { name }.apply(Expression),
 		IntegerValue { value } => IntegerValue { value }.apply(Expression),
 	}
@@ -247,10 +239,7 @@ pub struct ManualAnyFunctionBinding {
 
 impl ManualAnyFunctionBinding {
 	pub fn new(to_match: BTreeMap<String, AnyFunctionPattern>) -> Self {
-		Self {
-			to_match,
-			bindings: BTreeMap::default(),
-		}
+		Self { to_match, bindings: BTreeMap::default() }
 	}
 }
 
@@ -260,13 +249,15 @@ impl AnyFunctionBinding for ManualAnyFunctionBinding {
 		any_function_name: &str,
 		args: &[Expression],
 		expr: Expression,
-		global_bindings: &mut BindingStorage
+		global_bindings: &mut BindingStorage,
 	) -> Option<()> {
 		let AnyFunctionPattern { pattern, variables } = self.to_match.get(any_function_name)?.clone();
 		let mut local_bingings = BindingStorage::default();
 		crate::binding::find_bindings(expr, &pattern, &mut local_bingings, self)?;
 
-		if variables.len() != args.len() { return None; }
+		if variables.len() != args.len() {
+			return None;
+		}
 		for (name, arg) in variables.iter().zip(args.iter()) {
 			let binding = local_bingings.0.remove(name)?;
 			crate::binding::find_bindings(binding, &arg, global_bindings, self)?;
@@ -281,7 +272,7 @@ impl AnyFunctionBinding for ManualAnyFunctionBinding {
 		&self,
 		any_function_name: &str,
 		args: Vec<Expression>,
-		global_bindings: &BindingStorage
+		global_bindings: &BindingStorage,
 	) -> Option<Expression> {
 		let AnyFunctionPattern { pattern, variables } = self.to_match.get(any_function_name)?.clone();
 		let mut local_bindings = self.bindings.get(any_function_name)?.clone();

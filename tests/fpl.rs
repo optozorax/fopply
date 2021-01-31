@@ -1,9 +1,6 @@
 use std::collections::BTreeMap;
 
-use fopply::parsing::*;
-use fopply::binding::*;
-use fopply::utils::char_index::*;
-use fopply::read_fpl;
+use fopply::{binding::*, parsing::*, read_fpl, utils::char_index::*};
 
 #[test]
 fn test() {
@@ -55,7 +52,10 @@ fn test2() {
 fn test3() {
 	let expression = parser::expr("part(not(b = 0), a*part($true, 1, $undefined), a)").unwrap();
 	let expression = clear_parsing_info(expression);
-	let formula = parser::formula("part(cond, $f(part(cond2, then2, else2)), else) <-> part(cond, $f(part(cond2 & cond, then2, else2)), else)").unwrap();
+	let formula = parser::formula(
+		"part(cond, $f(part(cond2, then2, else2)), else) <-> part(cond, $f(part(cond2 & cond, then2, else2)), else)",
+	)
+	.unwrap();
 
 	let mut binding_map = BTreeMap::new();
 	let (key, value) = parser::function_binding("$f(x) := a*x").unwrap();
@@ -75,10 +75,7 @@ fn test3() {
 
 macro_rules! same {
 	($a:expr, $b:expr) => {
-		assert_eq!(
-			clear_parsing_info(parser::expr($a).unwrap()), 
-			clear_parsing_info(parser::expr($b).unwrap())
-		);
+		assert_eq!(clear_parsing_info(parser::expr($a).unwrap()), clear_parsing_info(parser::expr($b).unwrap()));
 	};
 }
 
@@ -144,6 +141,4 @@ fn parsing_info() {
 }
 
 #[test]
-fn read_math_fpl() {
-	read_fpl(&std::fs::read_to_string("fpl/math.fpl").unwrap()).unwrap();
-}
+fn read_math_fpl() { read_fpl(&std::fs::read_to_string("fpl/math.fpl").unwrap()).unwrap(); }

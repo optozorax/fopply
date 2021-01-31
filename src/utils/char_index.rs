@@ -15,13 +15,7 @@ pub fn get_char_range(s: &str, range: Range<usize>) -> Option<Range<CharIndex>> 
 	let end = iter
 		.find(|(_, index)| *index == range.end)
 		.map(|x| x.0)
-		.or_else(|| {
-			if range.end == s.len() {
-				Some(CharIndex(s.chars().count()))
-			} else {
-				None
-			}
-		})?;
+		.or_else(|| if range.end == s.len() { Some(CharIndex(s.chars().count())) } else { None })?;
 
 	Some(start..end)
 }
